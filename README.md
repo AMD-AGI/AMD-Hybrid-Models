@@ -35,8 +35,8 @@ We strongly recommend using Docker to ensure a consistent and reproducible envir
 
 **1. Clone the Repository:**
 ```bash
-git clone [https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git](https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git) # <-- UPDATE THIS URL
-cd YOUR_REPO_NAME # <-- UPDATE THIS DIR NAME
+git clone https://github.com/AMD-AIG-AIMA/X-EcoMLA.git # <-- UPDATE THIS URL
+cd X-EcoMLA # <-- UPDATE THIS DIR NAME
 ```
 
 **2. Build the docker:**
