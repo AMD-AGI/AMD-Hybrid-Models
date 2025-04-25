@@ -145,6 +145,8 @@ To evaluate the performance of your trained X-EcoMLA model:
     This script will typically run the model on standard benchmark datasets and report relevant metrics (e.g., perplexity, task-specific accuracy, memory usage). Check the script for details on the specific evaluation tasks performed.
 
 ## Results
+
+### Self-distillation Evaluation
 Zero-shot evaluation of self-distilled X-EcoMLA with different initialization methods (random, SVD with fixed/dynamic rank selection) and target models on the LM Harness Eval benchmark across nine tasks: ARC-Challenge (ARC), ARC-Easy (ARE), HellaSwag (HS), MMLU, OpenBookQA (OBQA), PIQA, PubMedQA (PBMD), RACE (RA), and WinoGrande (WG). 
 
 | Model & Setting            | Init. Method                            | KV-Size | ARC  | ARE  | HS   | MMLU | OBQA | PIQA | PBMD | RA   | WG   | Avg. |
@@ -156,6 +158,32 @@ Zero-shot evaluation of self-distilled X-EcoMLA with different initialization me
 | X-EcoMLA               | Fixed (r<sub>kv</sub>=816)              | 43 %    | 48.38| 70.37| 72.41| 57.51| 38.20| 76.28| 66.80| 46.41| 68.11| 60.50 |
 | X-EcoMLA               | Dynamic (δ<sub>kv</sub>=0.95)           | 43 %    | 48.55| 70.12| 72.25| 57.70| 39.60| 75.84| 68.40| 46.12| 66.14| 60.52 |
 
+### Extreme KV Cache Compression with Larger Teacher 
+Here we study the impact of KV-cache compression and teacher model size on performance. Reducing the KV-cache size lowers accuracy, but larger teacher models help recover performance. We trained Llama3.2-1B-Inst on three different ranks using three different teachers.
+
+**First)** **KV Size 15.6 %** (r<sub>kv</sub>=128, r<sub>q</sub>=1344, d<sub>qk</sub>=32) 
+| Model & Setting | Teacher | Param | Tokens | ARC | ARE | HS | MMLU | OBQA | PIQA | PBMD | RA | WG | Avg. |
+|-----------------|---------|-------|--------|----:|----:|---:|-----:|-----:|-----:|-----:|---:|---:|----:|
+| **Llama3.2-1B-Inst** | – | 1.24 B | –  | 37.97 | 63.30 | 60.65 | 46.05 | 34.80 | 74.32 | 60.00 | 38.18 | 59.67 | 52.77 |
+|  X-EcoMLA  | Llama3.2-1B-Inst | 1.23 B | 7 B | 40.10 | 62.88 | 58.17 | 39.70 | 37.80 | 73.50 | 56.60 | 39.33 | 59.67 | 51.97 |
+|  X-EcoMLA  | Llama3.2-3B-Inst | 1.23 B | 7 B | 39.33 | 64.86 | 58.92 | 41.86 | 37.40 | 73.83 | 58.80 | 39.71 | 59.59 | 52.70 |
+|  X-EcoMLA  | Llama3.1-8B-Inst | 1.23 B | 7 B | 42.49 | 67.13 | 60.58 | 42.51 | 36.60 | 73.99 | 59.40 | 40.38 | 59.43 | **53.61** |
+
+**Second)** **KV Size 9.4 %** (r<sub>kv</sub>=64, r<sub>q</sub>=1424, d<sub>qk</sub>=32) 
+| Model & Setting | Teacher | Param | Tokens | ARC | ARE | HS | MMLU | OBQA | PIQA | PBMD | RA | WG | Avg. |
+|-----------------|---------|-------|--------|----:|----:|---:|-----:|-----:|-----:|-----:|---:|---:|----:|
+| **Llama3.2-1B-Inst** | – | 1.24 B | –  | 37.97 | 63.30 | 60.65 | 46.05 | 34.80 | 74.32 | 60.00 | 38.18 | 59.67 | 52.77 |
+|  X-EcoMLA  | Llama3.2-1B-Inst | 1.23 B | 7 B | 39.16 | 62.63 | 56.04 | 34.90 | 36.40 | 72.85 | 56.40 | 37.70 | 58.33 | 50.49 |
+|  X-EcoMLA  | Llama3.2-3B-Inst | 1.23 B | 7 B | 37.97 | 63.55 | 56.95 | 37.54 | 35.40 | 72.74 | 57.00 | 38.66 | 59.27 | 51.01 |
+|  X-EcoMLA  | Llama3.1-8B-Inst | 1.23 B | 7 B | 40.02 | 67.17 | 58.40 | 38.53 | 37.80 | 73.83 | 58.00 | 39.43 | 60.93 | **52.68** |
+
+**Third)** **KV Size 7.8 %** (r<sub>kv</sub>=48, r<sub>q</sub>=1440, d<sub>qk</sub>=32)
+| Model & Setting | Teacher | Param | Tokens | ARC | ARE | HS | MMLU | OBQA | PIQA | PBMD | RA | WG | Avg. |
+|-----------------|---------|-------|--------|----:|----:|---:|-----:|-----:|-----:|-----:|---:|---:|----:|
+| **Llama3.2-1B-Inst** | – | 1.24 B | –  | 37.97 | 63.30 | 60.65 | 46.05 | 34.80 | 74.32 | 60.00 | 38.18 | 59.67 | 52.77 |
+|  X-EcoMLA  | Llama3.2-1B-Inst | 1.23 B | 7 B | 38.48 | 61.66 | 55.32 | 30.62 | 35.20 | 72.36 | 56.60 | 37.99 | 59.43 | 49.74 |
+|  X-EcoMLA  | Llama3.2-3B-Inst | 1.23 B | 7 B | 36.18 | 62.21 | 55.82 | 36.41 | 35.60 | 72.03 | 57.00 | 38.09 | 60.06 | 50.38 |
+|  X-EcoMLA  | Llama3.1-8B-Inst | 1.23 B | 7 B | 37.71 | 65.32 | 57.32 | 36.27 | 36.80 | 72.96 | 58.20 | 38.76 | 58.80 | **51.35** |
 
 
 ## Acknowledgements
