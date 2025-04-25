@@ -147,7 +147,8 @@ To evaluate the performance of your trained X-EcoMLA model:
 ## Results
 
 ### Self-distillation Evaluation
-Zero-shot evaluation of self-distilled X-EcoMLA with different initialization methods (random, SVD with fixed/dynamic rank selection) and target models on the LM Harness Eval benchmark across nine tasks: ARC-Challenge (ARC), ARC-Easy (ARE), HellaSwag (HS), MMLU, OpenBookQA (OBQA), PIQA, PubMedQA (PBMD), RACE (RA), and WinoGrande (WG). 
+The table below reports zero-shot performance when X-EcoMLA learns from its own target model as the teacher (_self-distillation_).
+We evaluate two SVD-based initialization strategies—fixed rank and dynamic rank—across nine LM-Harness tasks: ARC-Challenge (ARC), ARC-Easy (ARE), HellaSwag (HS), MMLU, OpenBookQA (OBQA), PIQA, PubMedQA (PBMD), RACE (RA), and WinoGrande (WG). 
 
 | Model & Setting            | Init. Method                            | KV-Size | ARC  | ARE  | HS   | MMLU | OBQA | PIQA | PBMD | RA   | WG   | Avg. |
 |----------------------------|-----------------------------------------|--------:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|
