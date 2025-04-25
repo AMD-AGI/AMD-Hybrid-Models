@@ -145,9 +145,16 @@ To evaluate the performance of your trained X-EcoMLA model:
     This script will typically run the model on standard benchmark datasets and report relevant metrics (e.g., perplexity, task-specific accuracy, memory usage). Check the script for details on the specific evaluation tasks performed.
 
 ## Results
-Zero-shot evaluation of self-distilled X-EcoMLA with different initialization methods (random, SVD with fixed/dynamic rank selection) and target models on the LM Harness Eval benchmark across nine tasks: ARC-Challenge (ARC), ARC-Easy (ARE), HellaSwag (HS), MMLU, OpenBookQA (OBQA), PIQA, PubMedQA (PBMD), RACE (RA), and WinoGrande (WG). ($\uparrow$ denotes upcycling the target model.)
+Zero-shot evaluation of self-distilled X-EcoMLA with different initialization methods (random, SVD with fixed/dynamic rank selection) and target models on the LM Harness Eval benchmark across nine tasks: ARC-Challenge (ARC), ARC-Easy (ARE), HellaSwag (HS), MMLU, OpenBookQA (OBQA), PIQA, PubMedQA (PBMD), RACE (RA), and WinoGrande (WG). 
 
-
+| Model & Setting            | Init. Method                            | KV-Size | ARC  | ARE  | HS   | MMLU | OBQA | PIQA | PBMD | RA   | WG   | Avg. |
+|----------------------------|-----------------------------------------|--------:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|
+| **Llama3.2-1B-Inst**       | Target Model                            | 100 %   | 37.97| 63.30| 60.65| 46.05| 34.80| 74.32| 60.00| 38.18| 59.67| **52.77** |
+| X-EcoMLA               | Fixed (r<sub>kv</sub>=512)              | 53 %  | 40.19| 63.93| 60.67| 42.31| 37.60| 75.03| 59.20| 40.86| 61.01| 53.42 |
+| X-EcoMLA              | Dynamic (δ<sub>kv</sub>=0.95)           | 55 %  | 40.36| 64.31| 60.88| 42.54| 36.80| 74.16| 61.40| 40.77| 60.69| 53.54 |
+| **Llama3.2-3B-Inst**       | Target Model                            | 100 %   | 46.08| 67.93| 70.38| 60.34| 36.40| 75.79| 69.60| 40.86| 67.25| **59.40** |
+| X-EcoMLA               | Fixed (r<sub>kv</sub>=816)              | 43 %    | 48.38| 70.37| 72.41| 57.51| 38.20| 76.28| 66.80| 46.41| 68.11| 60.50 |
+| X-EcoMLA               | Dynamic (δ<sub>kv</sub>=0.95)           | 43 %    | 48.55| 70.12| 72.25| 57.70| 39.60| 75.84| 68.40| 46.12| 66.14| 60.52 |
 
 
 
