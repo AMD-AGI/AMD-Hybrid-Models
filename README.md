@@ -186,6 +186,11 @@ Here we study the impact of KV-cache compression and teacher model size on perfo
 |  X-EcoMLA  | Llama3.2-3B-Inst | 1.23 B | 7 B | 36.18 | 62.21 | 55.82 | 36.41 | 35.60 | 72.03 | 57.00 | 38.09 | 60.06 | 50.38 |
 |  X-EcoMLA  | Llama3.1-8B-Inst | 1.23 B | 7 B | 37.71 | 65.32 | 57.32 | 36.27 | 36.80 | 72.96 | 58.20 | 38.76 | 58.80 | **51.35** |
 
+<p align="center">
+  <img src="assets/xecomla_kv_compression.png" alt="Average accuracy vs. KV-cache compression for X-EcoMLA" width="600">
+  <br>
+  <em>Figure&nbsp;1 – Average accuracy of X-EcoMLA (trained on ≈7 B tokens) as a function of KV-cache compression ratio, using 1 B, 3 B, and 8 B teacher models. The dashed line marks the base-model score (52.77).</em>
+</p>
 
 ## Acknowledgements
 
