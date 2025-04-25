@@ -205,7 +205,8 @@ If you find X-EcoMLA useful in your research or application, please cite our pap
   title={{X-EcoMLA}: Upcycling Pre-Trained Attention into {MLA} for Efficient and Extreme {KV} Compression},
   author={Li, Guihong and Rezagholizadeh, Mehdi and Yang, Mingyu and Appia, Vikram and Barsoum, Emad},
   journal={arXiv preprint arXiv:2503.11132},
-  year={2025}
+  year={2025},
+  url={https://arxiv.org/abs/2503.11132}
 }
 ```
 
