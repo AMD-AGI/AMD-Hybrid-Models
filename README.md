@@ -13,7 +13,7 @@ This repository provides the code necessary to reproduce the results, train new 
 * **Extreme KV Cache Compression:** Leverages MLA to significantly reduce the memory footprint of the KV cache.
 * **Efficient Upcycling:** Modifies pre-trained attention layers rather than training from scratch.
 * **Two-Stage Training Pipeline:** Employs end-to-end distillation followed by Direct Preference Optimization (DPO) for optimal performance and alignment.
-* **Hardware Support:** Verified training procedures for both NVIDIA (H100/H200) and AMD (MI300/MI325) GPUs.
+* **Hardware Support:** Verified training procedures for both AMD Instinct™ MI300 and MI325 GPUs and NVIDIA H100/H200 GPUs.
 * **Example Implementations:** Provides configurations and scripts for Llama3.2 models (1B and 3B parameters).
 
 ## Table of Contents
@@ -43,7 +43,7 @@ cd X-EcoMLA # <-- UPDATE THIS DIR NAME
 
 Choose the instructions based on your GPU hardware:
 
-  * **For AMD MI300/MI325 GPUs:**
+  * **For AMD Instinct™ MI300 and MI325 GPUs:**
 
       * We verified training using the `rocm/pytorch-training:v25.4` image.
 
