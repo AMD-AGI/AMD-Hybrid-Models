@@ -39,8 +39,8 @@ from alignment import (
     get_quantization_config,
     get_tokenizer,
 )
-from trl import setup_chat_format
-from trainer.kd_trainer import KDTrainer
+
+from trainer.kd_trainer_pt import KDTrainer
 from transformers import Trainer
 from transformers import DataCollatorForLanguageModeling
 
@@ -106,6 +106,7 @@ def main():
         splits=data_args.dataset_splits,
         configs=data_args.dataset_configs,
         columns_to_keep=["text", "id"],
+        shuffle=False
     )
     
     logger.info(
@@ -155,21 +156,23 @@ def main():
             )
 
     # Process the dataset
-    # num_selected_train_samples = int(training_args.data_ratio*len(raw_datasets["train"])) 
+    # num_selected_train_samples = int(0.001*len(raw_datasets["train"])) 
     # shuffled_dataset = raw_datasets["train"].shuffle(seed=42)
     # selected_raw_dataset = shuffled_dataset.select(list(range(1,num_selected_train_samples)))
     # raw_datasets = DatasetDict({'train':selected_raw_dataset})    
     # num_raw_train_samples = len(raw_datasets["train"])
         
-    tokenized_dataset = raw_datasets.map(
+    tokenized_dataset = raw_datasets['train'].map(
         tokenize_function,
         batched=True,
         remove_columns=column_names,
         num_proc=data_args.preprocessing_num_workers,
+        load_from_cache_file=True
         )
     
-    train_dataset = tokenized_dataset["train"]
-    eval_dataset = tokenized_dataset["train"].select(list(range(1,500))) # Random select few samples from the train dataset
+    print("Get the mapped dataset!!!!!!!!!!!!!!!!!!!!!!!!!11")
+    train_dataset = tokenized_dataset
+    eval_dataset = tokenized_dataset.select(list(range(1,500))) # Random select few samples from the train dataset
 
     with training_args.main_process_first(desc="Log a few random samples from the processed training set"):
         for index in random.sample(range(len(raw_datasets["train"])), 3):
@@ -241,12 +244,24 @@ def main():
     data_collator = DataCollatorForLanguageModeling(
         tokenizer=tokenizer,
         mlm=False)
+    
+    teacher_model_kwargs = dict(
+        revision=model_args.model_revision,
+        trust_remote_code=model_args.trust_remote_code,
+        use_flash_attention_2=model_args.use_flash_attention_2,
+        torch_dtype=torch_dtype,
+        use_cache=True,
+        device_map=get_kbit_device_map() if quantization_config is not None else None,
+        quantization_config=quantization_config,
+    )
+    training_args.teacher_model_init_kwargs = teacher_model_kwargs
 
     ########################
     # Initialize the Trainer
     ########################
-    trainer = Trainer(
+    trainer = KDTrainer(
         model=model,
+        teacher_model=training_args.teacher_model_name_or_path,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
