@@ -14,7 +14,7 @@ This repository provides the code necessary to reproduce the results, train new 
 * **Efficient Upcycling:** Modifies pre-trained attention layers rather than training from scratch.
 * **Two-Stage Training Pipeline:** Employs end-to-end distillation followed by Direct Preference Optimization (DPO) for optimal performance and alignment.
 * **Hardware Support:** Verified training procedures for both AMD Instinct™ MI300 and MI325 GPUs and NVIDIA H100/H200 GPUs.
-* **Example Implementations:** Provides configurations and scripts for Llama3.2 models (1B and 3B parameters).
+* **Example Implementations:** Provides configurations and scripts for Llama3.2 models (1B and 3B parameters) and SmolLM models (135M, 360M, and 1.7B parameters).
 
 ## Table of Contents
 
@@ -35,8 +35,8 @@ We strongly recommend using Docker to ensure a consistent and reproducible envir
 
 **1. Clone the Repository:**
 ```bash
-git clone https://github.com/AMD-AIG-AIMA/X-EcoMLA.git # <-- UPDATE THIS URL
-cd X-EcoMLA # <-- UPDATE THIS DIR NAME
+git clone https://github.com/AMD-AIG-AIMA/AMD-Hybrid-Models.git # <-- UPDATE THIS URL
+cd AMD-Hybrid-Models/X-EcoMLA # <-- UPDATE THIS DIR NAME
 ```
 
 **2. Build the docker:**
@@ -84,47 +84,51 @@ Choose the instructions based on your GPU hardware:
 
 **Note:** The `install.sh` script handles the installation of required Python packages and dependencies within the containerized environment.
 
-## Training
+## Training for Instruct models
 
 X-EcoMLA utilizes a two-stage training strategy for optimal results:
 
-### Stage 1: End-to-End Distillation
+### Stage 1: End-to-End SFT Distillation
 
   * **Goal:** Transfer knowledge from a larger, pre-trained teacher model to the smaller student model (with the MLA architecture).
   * **Method:** Minimize the Kullback–Leibler (KL) divergence loss between the output distributions of the student and teacher models. We generally observe better results when using a larger teacher model.
-  * **Framework:** Uses `accelerate` and `deepspeed` (configured via `deepspeed_zero3.yaml`) for distributed training.
+  * **Framework:** Uses `accelerate` and `fsdp` (configured via `configs/fsdp.yaml`) for distributed training.
 
 **Example Commands:**
 
   * **Llama3.2-1B Student Model:**
     ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file deepspeed_zero3.yaml train_mla/train_distill.py llama3.2_1B/mla_kv_rank_64_8bt.yaml
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_distill.py configs/llama3.2_1B/mla_kv_rank_64_8bt.yaml
     ```
   * **Llama3.2-3B Student Model:**
     ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file deepspeed_zero3.yaml train_mla/train_distill.py llama3.2_3B/mla_kv_rank_96_8bt.yaml
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_distill.py configs/llama3.2_3B/mla_kv_rank_96_8bt.yaml
     ```
+  * **SmolLM-135M Student Model:**
+    ```bash
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_distill.py configs/SmolLM_135M/mla_kv_rank_16_1.7bt.yaml
+    ```
+  * **SmolLM-1.7B Student Model:**
+    ```bash
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_distill.py configs/SmolLM_1.7B/mla_kv_rank_480_1.7bt.yaml
+    ```
+  **Note:** After training, need to get the `model.safetensors` using `accelerate merge-weights` for the following DPO stage and evaluation.
 
 ### Stage 2: Instruction Tuning with DPO
 
   * **Goal:** Further align the distilled model with desired behaviors and instruction-following capabilities.
   * **Method:** Apply Direct Preference Optimization (DPO) using a preference dataset.
-  * **Framework:** Also uses `accelerate` and `deepspeed`.
+  * **Framework:** Also uses `accelerate` and `fsdp`.
 
 **Example Commands:**
-
-  * **Llama3.2-1B Model (after Stage 1):**
-    ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file deepspeed_zero3.yaml train_mla/train_dpo.py llama3.2_1B/dpo.yaml
-    ```
-  * **Llama3.2-3B Model (after Stage 1):**
-    ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file deepspeed_zero3.yaml train_mla/train_dpo.py llama3.2_3B/dpo.yaml # <-- Update path if needed
-    ```
+   ```bash
+   ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_dpo.py configs/dpo.yaml <-- Update the paths in the config file
+   ```
+  **Note:** After training, need to get the `model.safetensors` using `accelerate merge-weights` for the evaluation.
 
 ### Configuration
 
-  * Training hyperparameters, model paths, dataset details, MLA configurations (e.g., KV rank, quantization bits), and DeepSpeed settings are controlled by `.yaml` configuration files (e.g., `llama3.2_1B/mla_kv_rank_64_8bt.yaml`, `deepspeed_zero3.yaml`).
+  * Training hyperparameters, model paths, dataset details, MLA configurations (e.g., KV rank, quantization bits), and FSDP settings are controlled by `.yaml` configuration files (e.g., `configs/llama3.2_1B/mla_kv_rank_64_8bt.yaml`, `configs/fsdp.yaml`).
   * Please inspect these files and modify them according to your specific needs (e.g., dataset paths, teacher/student model identifiers, compute resources).
 
 ## Evaluation
