@@ -48,7 +48,8 @@ class KDTrainer(SFTTrainer):
         if not self.args.ILD:
             self.teacher_model = self.prepare_fsdp(teacher_model, evaluation_mode=True)
         else:
-            self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
+            # self.teacher_model = self.accelerator.prepare_model(teacher_model, evaluation_mode=True)
+            self.teacher_model = self.prepare_fsdp(teacher_model, evaluation_mode=True)
 
         self.kl_weight = args.kl_weight
         self.ce_weight = args.ce_weight
@@ -70,25 +71,37 @@ class KDTrainer(SFTTrainer):
         if self.args.ILD:
             # Intermediate layer distillation
             teacher_all_states = outputs_teacher["hidden_states"]
-            model = model.module if hasattr(model, 'module') else model
+            #model = model.module if hasattr(model, 'module') else model
+            
+            outputs_student = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+                labels=inputs["labels"],
+                output_hidden_states=self.args.ILD,
+                layer_input=teacher_all_states
+                )
+            
+            student_all_states = outputs_student["hidden_states"]
 
             loss = 0
-            for layer_idx, student_layer in enumerate(model.model.layers):
-                            
-                student_input = teacher_all_states[layer_idx].to(self.torch_dtype)
-                
-                outputs_student = student_layer(hidden_states=student_input)
-                outputs_student = outputs_student[0]
-
-                if layer_idx == len(model.model.layers)-1:
-                    outputs_student = model.model.norm(outputs_student)
-
-                teacher_hstate = teacher_all_states[layer_idx + 1].to(self.torch_dtype)
-
-                assert outputs_student.size() == teacher_hstate.size()
-                loss_value = torch.norm(outputs_student - teacher_hstate, p=2, dim=(-1,)).mean()
-                
+            for layer_idx in range(1, len(teacher_all_states)):
+                loss_value = torch.norm(student_all_states[layer_idx] - teacher_all_states[layer_idx], p=2, dim=(-1,)).mean()
                 loss += loss_value
+
+            #     student_input = teacher_all_states[layer_idx].to(self.torch_dtype)
+                
+            #     outputs_student = student_layer(hidden_states=student_input)
+            #     outputs_student = outputs_student[0]
+
+            #     if layer_idx == len(model.model.layers)-1:
+            #         outputs_student = model.model.norm(outputs_student)
+
+            #     teacher_hstate = teacher_all_states[layer_idx + 1].to(self.torch_dtype)
+
+            #     assert outputs_student.size() == teacher_hstate.size()
+            #     loss_value = torch.norm(outputs_student - teacher_hstate, p=2, dim=(-1,)).mean()
+                
+            #     loss += loss_value
 
         else:
             # compute student output
