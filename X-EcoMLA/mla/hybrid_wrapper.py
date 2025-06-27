@@ -7,7 +7,7 @@ import torch.nn as nn
 
 from dataclasses import dataclass, field, asdict
 
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForCausalLM, LlamaConfig
 
 from transformers.utils import WEIGHTS_NAME, CONFIG_NAME
 from transformers.utils.hub import cached_file
@@ -137,7 +137,7 @@ class MLATransformerHybridModelWrapper(nn.Module):
     @staticmethod
     def from_pretrained_local(pretrained_model_name, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"):
         config_data = load_config_hf(pretrained_model_name)
-        transformer_model = AutoModelForCausalLM.from_pretrained(config_data["_name_or_path"], torch_dtype=torch_dtype, attn_implementation=attn_implementation)
+        transformer_model = AutoModelForCausalLM.from_config(LlamaConfig(**config_data), torch_dtype=torch_dtype, attn_implementation=attn_implementation)
         with open(f'{pretrained_model_name}/{MLA_LAYER_CONFIG_NAME}', 'r') as json_file:
             config_dict = json.load(json_file)
         layer_config = DeepseekV3Config(**config_dict)
@@ -149,7 +149,7 @@ class MLATransformerHybridModelWrapper(nn.Module):
     @staticmethod
     def from_pretrained_hub(pretrained_model_name, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"):
         config_data = load_config_hf(pretrained_model_name)
-        transformer_model = AutoModelForCausalLM.from_pretrained(config_data["_name_or_path"], torch_dtype=torch_dtype, attn_implementation=attn_implementation)
+        transformer_model = AutoModelForCausalLM.from_config(LlamaConfig(**config_data), torch_dtype=torch_dtype, attn_implementation=attn_implementation)
         resolved_archive_file = cached_file(pretrained_model_name, MLA_LAYER_CONFIG_NAME, _raise_exceptions_for_missing_entries=False)
         config_dict = json.load(open(resolved_archive_file))
         layer_config = DeepseekV3Config(**config_dict)
