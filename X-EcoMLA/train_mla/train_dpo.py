@@ -16,6 +16,7 @@
 import logging
 import random
 import sys
+sys.path.append('./')
 
 import torch
 import transformers
