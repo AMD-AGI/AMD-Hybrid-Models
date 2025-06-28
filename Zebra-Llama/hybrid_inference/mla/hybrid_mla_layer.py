@@ -388,30 +388,7 @@ class DeepseekV3FlashAttention2(nn.Module):
                 softmax_scale=self.softmax_scale,
                 causal=self.is_causal,
             )
-
             return attn_output
-            
-            # compressed_kv = self._update_kv_cache(compressed_kv, inference_params)
-            # kv_cache_len = compressed_kv.shape[1]
-            
-            # # Step #2: Separate normed compressed kv and kpe
-            # compressed_kv, k_pe = torch.split(
-            #     compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
-            # )
-            
-            #  # Separete the matrix kv_b_proj for matrix absorbing
-            # wkv_b = self.kv_b_proj.weight.view(self.num_kv_heads, self.qk_nope_head_dim+self.v_head_dim, -1)
-            # wkv_b = torch.repeat_interleave(wkv_b, repeats=self.num_heads//self.num_kv_heads, dim=0)
-            # wk_b = wkv_b[:, :self.qk_nope_head_dim, :]
-            # wv_b = wkv_b[:, self.qk_nope_head_dim:, :]
-
-            # q_nope = torch.einsum("bshd,hdc->bshc", q_nope.transpose(1, 2), wk_b)
-            # scores = (torch.einsum("bshc,btc->bsht", q_nope, compressed_kv) +
-            #               torch.einsum("bshr,btr->bsht", q_pe.transpose(1, 2), k_pe)) * self.softmax_scale
-            # scores = scores.softmax(dim=-1, dtype=torch.float32).type_as(q_nope)
-            # x = torch.einsum("bsht,btc->bshc", scores, compressed_kv)
-            # x = torch.einsum("bshc,hdc->bshd", x, wv_b)
-            # return x
             
         else:
             
@@ -431,20 +408,6 @@ class DeepseekV3FlashAttention2(nn.Module):
             wk_b = wkv_b[:, :self.qk_nope_head_dim, :]
             wv_b = wkv_b[:, self.qk_nope_head_dim:, :]
             
-            # q_mqa = torch.concat((q_nope, q_pe.transpose(1, 2)), -1)
-            # k_mqa = torch.concat((compressed_kv, k_pe), -1).squeeze(2)
-            # v_mqa = compressed_kv.squeeze(2)
-
-            # x = F.scaled_dot_product_attention(
-            #     q_mqa.transpose(1, 2), 
-            #     k_mqa.transpose(1, 2), 
-            #     v_mqa.transpose(1, 2), 
-            #     is_causal=True, 
-            #     scale=self.softmax_scale
-            # ).transpose(1, 2)
-
-            # q_nope = torch.matmul(q_nope, wk_b) # (b, h, s, c)
-            # scores = (torch.matmul(q_nope.transpose(1, 2), compressed_kv.transpose(-2, -1)) + torch.matmul(q_pe.transpose(1, 2), k_pe.transpose(-2, -1))) * self.softmax_scale
             q_nope = torch.einsum("bshd,hdc->bshc", q_nope.transpose(1, 2), wk_b)
             scores = (torch.einsum("bshc,btc->bsht", q_nope, compressed_kv) +
                           torch.einsum("bshr,btr->bsht", q_pe.transpose(1, 2), k_pe)) * self.softmax_scale

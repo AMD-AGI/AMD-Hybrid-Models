@@ -14,10 +14,7 @@ from transformers.utils.hub import cached_file
 
 from hybrid_inference.mla.hybrid_model import MLADecoderLayer
 from hybrid.mamba2.hybrid_model import Mamba2DecoderLayer
-# from mamba_ssm.utils.generation import GenerationMixin
-import sys
-sys.path.append('/home/mingyyan/AMD-Hybrid-Models/hybrid_inference')
-from generation import GenerationMixin
+from mamba_ssm.utils.generation import GenerationMixin
 from hybrid.hybrid_config import HybridConfig
 from collections import namedtuple
 
