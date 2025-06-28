@@ -124,6 +124,7 @@ class CustomLlamaModel(LlamaModel):
             if output_hidden_states:
                 all_hidden_states += (hidden_states,)
             
+            # If performing intermediate layer distillation, replace the layer input
             if layer_input is not None:
                 hidden_states = layer_input[idx]
 
@@ -434,13 +435,12 @@ class HybridModelWrapper(nn.Module):
         else:
             mla_model=None
         transformer_model = CustomLlamaForCausalLM.from_pretrained(tranformer_name, torch_dtype=dtype, attn_implementation=attn_implementation)
-        # transformer_model = AutoModelForCausalLM.from_pretrained(tranformer_name, torch_dtype=dtype, attn_implementation=attn_implementation)
         return HybridModelWrapper(checkpoint_path, transformer_model, hybrid_config, mla_layers, dtype, init_with_svd, init_with_kqvo, mamba_model, mla_model)
 
     @staticmethod
     def from_pretrained_local(pretrained_model_name, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"):
         config_data = load_config_hf(pretrained_model_name)
-        transformer_model = AutoModelForCausalLM.from_config(LlamaConfig(**config_data), torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2")
+        transformer_model = AutoModelForCausalLM.from_config(LlamaConfig(**config_data), torch_dtype=torch_dtype, attn_implementation=attn_implementation)
         with open(f'{pretrained_model_name}/{HYBRID_CONFIG_NAME}', 'r') as json_file:
             config_dict = json.load(json_file)
         hybrid_config = HybridConfig(**config_dict)
@@ -449,7 +449,7 @@ class HybridModelWrapper(nn.Module):
     @staticmethod
     def from_pretrained_hub(pretrained_model_name, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2"):
         config_data = load_config_hf(pretrained_model_name)
-        transformer_model = AutoModelForCausalLM.from_config(LlamaConfig(**config_data), torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2")
+        transformer_model = AutoModelForCausalLM.from_config(LlamaConfig(**config_data), torch_dtype=torch_dtype, attn_implementation=attn_implementation)
         resolved_archive_file = cached_file(pretrained_model_name, HYBRID_CONFIG_NAME, _raise_exceptions_for_missing_entries=False)
         config_dict = json.load(open(resolved_archive_file))
         hybrid_config = HybridConfig(**config_dict)
