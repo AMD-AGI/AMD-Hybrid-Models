@@ -1,12 +1,12 @@
-# AMD Hybrid Models
+# Zebra-Llama
 
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![arXiv](https://img.shields.io/badge/arXiv-2503.11132-b31b1b.svg)](https://arxiv.org/abs/2503.11132) [![arXiv](https://img.shields.io/badge/arXiv-2505.17272-b31b1b.svg)](https://arxiv.org/abs/2505.17272)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![arXiv](https://img.shields.io/badge/arXiv-2505.17272-b31b1b.svg)](https://arxiv.org/abs/2505.17272)
 
-**Official repository for <X-EcoMLA: Upcycling Pre-Trained Attention into MLA for Efficient and Extreme KV Cache Compression in Large Language Models> and <Zebra-Llama: Towards Extremely Efficient Hybrid Models>**
+**Official repository for Zebra-Llama: Towards Extremely Efficient Hybrid Models**
 
 Large Language Models (LLMs) often face significant memory bottlenecks due to the large Key-Value (KV) cache required during inference. In **X-EcoMLA**, we address this challenge by proposing a novel method to "upcycle" the attention mechanisms of pre-trained models into Multi-head Latent Attention (MLA), which substantially reduces the KV cache with minimal impact on model performance. In the followup work **Zebra-Llama**, we achieve further KV cache compression and inference efficiency by proposing a hybrid model that mixs MLA and Mamba. 
 
-This repository provides the code necessary to reproduce the results, train new X-EcoMLA/Zebra-Llama models, and evaluate their performance.
+This repository provides the code necessary to reproduce the results, train new Zebra-Llama models, and evaluate their performance.
 
 ## Features
 
@@ -20,9 +20,9 @@ This repository provides the code necessary to reproduce the results, train new 
 
 * [Installation](#installation)
 * [Training](#training)
-    * [1. Intermediate Layer Distillation](#1-intermediate-layer-distillation-ild-zebra-llama)
-    * [2: End-to-End SFT Distillation](#2-end-to-end-sft-distillation-x-ecomla-zebra-llama)
-    * [3: Instruction Tuning with DPO](#3-instruction-tuning-with-dpo-x-ecomla-zebra-llama)
+    * [1. Intermediate Layer Distillation](#1-intermediate-layer-distillation-ild)
+    * [2: End-to-End SFT Distillation](#2-end-to-end-sft-distillation)
+    * [3: Instruction Tuning with DPO](#3-instruction-tuning-with-dpo)
     * [Configuration](#configuration)
 * [Evaluation](#evaluation)
 * [Acknowledgements](#acknowledgements)
@@ -37,7 +37,7 @@ We strongly recommend using Docker to ensure a consistent and reproducible envir
 **1. Clone the Repository:**
 ```bash
 git clone https://github.com/AMD-AIG-AIMA/AMD-Hybrid-Models.git 
-cd AMD-Hybrid-Models 
+cd AMD-Hybrid-Models/Zebra-Llama
 ```
 
 **2. Build the docker:**
@@ -88,20 +88,6 @@ Choose the instructions based on your GPU hardware:
 
 We released our model checkpoints in the [huggingface](https://huggingface.co/collections/amd/amd-hybrid-models-67be591b09a4524abf65bcee). 
 
-**Lm-eval-harness Evaluation**
-
-```bash
-# Choose the model checkpoint
-current_ckpt=amd/Zebra-Llama-8B-16MLA-16Mamba-DPO
-
-# Run lm-eval
-python benchmark/llm_eval/lm_harness_eval.py \
- --model hybrid \
- --model_args pretrained=${current_ckpt} \
- --tasks mmlu,hellaswag,piqa,arc_easy,arc_challenge,winogrande,openbookqa,pubmedqa,race \
- --num_fewshot 0 --device cuda --batch_size 16
-```
-
 **Chat with the Model**
 
 ```bash
@@ -136,24 +122,24 @@ print(tokenizer.decode(tokens[0], skip_special_tokens=False))
 
 ## Training
 
-### 1. Intermediate Layer Distillation (ILD) (Zebra-Llama)
+### 1. Intermediate Layer Distillation (ILD)
 
   * **Goal:** Align the intermediate hidden states for better weight initialization.
   * **Method:** Minimize the Mean Square Error (MSE) between the outputs of the student and teacher layers given the same inputs.
-  * **Framework:** Uses `accelerate` (configured via `configs/multi_gpu.yaml`) for distributed training.
+  * **Framework:** Uses `accelerate` (configured via `configs/fsdp_M2_ILD.yaml` and `configs/fsdp_MLA_ILD.yaml`) for FSDP training.
 
 **Example Commands:**
 
   * **Llama3.2-1B MLA blocks:**
     ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/multi_gpu.yaml train_hybrid/train_distill.py configs/llama3.2_1B/zebra_MLA_ILD.yaml # <-- Update path if needed
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp_MLA_ILD.yaml train_hybrid/train_distill.py configs/llama3.2_1B/zebra_MLA_ILD.yaml # <-- Update path if needed
     ```
   * **Llama3.2-1B Mamba blocks**
     ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/multi_gpu.yaml train_hybrid/train_distill.py configs/llama3.2_1B/zebra_M2_ILD.yaml # <-- Update path if needed
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp_M2_ILD.yaml train_hybrid/train_distill.py configs/llama3.2_1B/zebra_M2_ILD.yaml # <-- Update path if needed
     ```
 
-### 2. End-to-End SFT Distillation (X-EcoMLA, Zebra-Llama)
+### 2. End-to-End SFT Distillation
 
   * **Goal:** Transfer knowledge from a larger, pre-trained teacher model to the smaller student model (with the MLA/Mamba architecture).
   * **Method:** Minimize the Kullback–Leibler (KL) divergence loss between the output distributions of the student and teacher models. We generally observe better results when using a larger teacher model.
@@ -161,21 +147,13 @@ print(tokenizer.decode(tokens[0], skip_special_tokens=False))
 
 **Example Commands:**
 
-  * **X-EcoMLA-1B (Static):**
-    ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_hybrid/train_distill.py configs/llama3.2_1B/xecomla_1bt_SFT_static.yaml # <-- Update path if needed
-    ```
-  * **X-EcoMLA-1B (Dynamic):**
-    ```bash
-    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_hybrid/train_distill.py configs/llama3.2_1B/xecomla_1bt_SFT_dynamic.yaml # <-- Update path if needed
-    ```
   * **Zebra-Llama-1B-4MLA-12Mamba**
     ```bash
     ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_hybrid/train_distill.py configs/llama3.2_1B/zebra_4MLA12M2_8bt_SFT.yaml # <-- Update path if needed
     ```
 **Note:** After training, need to get the `model.safetensors` using `accelerate merge-weights` for the following DPO training.
 
-### 3: Instruction Tuning with DPO (X-EcoMLA, Zebra-Llama)
+### 3: Instruction Tuning with DPO
 
   * **Goal:** Further align the distilled model with desired behaviors and instruction-following capabilities.
   * **Method:** Apply Direct Preference Optimization (DPO) using a preference dataset.
@@ -193,7 +171,17 @@ ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml trai
 
 ## Evaluation
 
-To evaluate the performance of your trained X-EcoMLA/Zebra-Llama model:
+We provide several checkpoints of Zebra-Llama [here](https://huggingface.co/collections/amd/amd-hybrid-models-67be591b09a4524abf65bcee). The test these checkpoints or your trained hybrid model, please run:
+```bash
+# Run lm-eval
+python benchmark/llm_eval/lm_harness_eval.py \
+ --model hybrid \
+ --model_args pretrained=amd/Zebra-Llama-8B-16MLA-16Mamba-DPO \
+ --tasks mmlu,hellaswag,piqa,arc_easy,arc_challenge,winogrande,openbookqa,race \
+ --num_fewshot 0 --device cuda --batch_size 16
+```
+
+Besides, we provide a script to perform batched evaluation for the trained hybrid models
 
 1.  **Update Checkpoint Path:** Modify the `eval.sh` script to point to the directory containing your final model checkpoint (saved after the DPO stage).
     ```bash
@@ -212,19 +200,6 @@ To evaluate the performance of your trained X-EcoMLA/Zebra-Llama model:
 
 ## Results
 
-### Self-distillation Evaluation (X-EcoMLA)
-The table below reports zero-shot performance when X-EcoMLA learns from its own target model as the teacher (_self-distillation_).
-We evaluate two SVD-based initialization strategies—fixed rank and dynamic rank—across nine LM-Harness tasks: ARC-Challenge (ARC), ARC-Easy (ARE), HellaSwag (HS), MMLU, OpenBookQA (OBQA), PIQA, PubMedQA (PBMD), RACE (RA), and WinoGrande (WG). 
-
-| Model & Setting            | Init. Method                            | KV-Size | ARC  | ARE  | HS   | MMLU | OBQA | PIQA | PBMD | RA   | WG   | Avg. |
-|----------------------------|-----------------------------------------|--------:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|-----:|
-| **Llama3.2-1B-Inst**       | Target Model                            | 100 %   | 37.97| 63.30| 60.65| 46.05| 34.80| 74.32| 60.00| 38.18| 59.67| **52.77** |
-| X-EcoMLA               | Fixed (r<sub>kv</sub>=512)              | 53 %  | 40.19| 63.93| 60.67| 42.31| 37.60| 75.03| 59.20| 40.86| 61.01| 53.42 |
-| X-EcoMLA              | Dynamic (δ<sub>kv</sub>=0.95)           | 55 %  | 40.36| 64.31| 60.88| 42.54| 36.80| 74.16| 61.40| 40.77| 60.69| 53.54 |
-| **Llama3.2-3B-Inst**       | Target Model                            | 100 %   | 46.08| 67.93| 70.38| 60.34| 36.40| 75.79| 69.60| 40.86| 67.25| **59.40** |
-| X-EcoMLA               | Fixed (r<sub>kv</sub>=816)              | 43 %    | 48.38| 70.37| 72.41| 57.51| 38.20| 76.28| 66.80| 46.41| 68.11| 60.50 |
-| X-EcoMLA               | Dynamic (δ<sub>kv</sub>=0.95)           | 43 %    | 48.55| 70.12| 72.25| 57.70| 39.60| 75.84| 68.40| 46.12| 66.14| 60.52 |
-
 ### Extreme KV Cache Compression with Larger Teacher (X-EcoMLA/Zebra-Llama)
 Here we study the impact of KV-cache compression and teacher model size on performance. Reducing the KV-cache size lowers accuracy, but larger teacher models help recover performance. 
 
@@ -233,24 +208,24 @@ Here we study the impact of KV-cache compression and teacher model size on perfo
 |-----------------|-------|-------|--------|----:|----:|---:|-----:|-----:|-----:|---:|---:|----:|
 | **Llama3.2-1B-Inst** | 100% |1.24 B | –  | 37.97 | 63.30 | 60.65 | 46.05 | 34.80 | 74.32 |  38.18 | 59.67 | 51.87 |
 |  X-EcoMLA (r<sub>kv</sub>=64)  | 9.37% | 1.23 B | 7 B | 40.02 | 67.17 | 58.40 | 38.53 | 37.80 | 73.83 | 39.43 | 60.93 | 52.01 |
-|  Zebra-Llama-8MLA-8M2 (r<sub>kv</sub>=128) | 7.81% | 1.27 B | 7 B | 42.49 | 67.38 | 60.54 | 38.94 | 41.6 | 72.91 |  38.37 | 61.25 | 52.94 |
-|  Zebra-Llama-4MLA-12M2 (r<sub>kv</sub>=128) | **3.91%** | 1.28 B | 7 B | 42.32 | 66.96 | 58.93 | 37.91 | 40.6 | 72.96 | 37.7 | 58.88 | 52.03 |
+|  Zebra-Llama-8MLA-8M2 (r<sub>kv</sub>=128) ([ckpt](https://huggingface.co/amd/Zebra-Llama-1B-8MLA-8Mamba-DPO))| 7.81% | 1.27 B | 7 B | 42.49 | 67.38 | 60.54 | 38.94 | 41.6 | 72.91 |  38.37 | 61.25 | 52.94 |
+|  Zebra-Llama-4MLA-12M2 (r<sub>kv</sub>=128) ([ckpt](https://huggingface.co/amd/Zebra-Llama-1B-4MLA-12Mamba-DPO))| **3.91%** | 1.28 B | 7 B | 42.32 | 66.96 | 58.93 | 37.91 | 40.6 | 72.96 | 37.7 | 58.88 | 52.03 |
 
 **Second)** Target model: **Llama3.2-3B-Inst**,  Teacher model: **Llama3.1-8B-Inst**
 | Model & Setting  | KV Size | Param | Tokens | ARC | ARE | HS | MMLU | OBQA | PIQA | RA | WG | Avg. |
 |-----------------|-------|-------|--------|----:|----:|---:|-----:|-----:|-----:|---:|---:|----:|
 | **Llama3.2-3B-Inst** | 100% |3.21 B | –  | 46.08 | 67.93 | 70.38 | 60.34 | 36.4 | 75.79 |  40.86 | 67.25 | 58.13 |
 |  X-EcoMLA (r<sub>kv</sub>=128)  | 9.37% | 3.21 B | 7 B | 52.05 | 75.38 | 70.95 | 53.2 | 40.8 | 77.09 | 44.69 | 66.85 | 60.13 |
-|  Zebra-Llama-14MLA-14M2 (r<sub>kv</sub>=128) | 4.69% | 3.27 B | 9 B | 51.28 | 76.14 | 72.57 | 52.1 | 42.4 | 77.53 |  45.93 | 67.56 | 60.69 |
-|  Zebra-Llama-6MLA-22M2 (r<sub>kv</sub>=128) | **2.01%** | 3.39 B | 9 B | 50.77 | 76.09 | 71.46 | 50.06 | 43.4 | 77.26 | 42.49 | 66.46 | 59.75 |
+|  Zebra-Llama-14MLA-14M2 (r<sub>kv</sub>=128) ([ckpt](https://huggingface.co/amd/Zebra-Llama-3B-14MLA-14Mamba-DPO)) | 4.69% | 3.27 B | 9 B | 51.28 | 76.14 | 72.57 | 52.1 | 42.4 | 77.53 |  45.93 | 67.56 | 60.69 |
+|  Zebra-Llama-6MLA-22M2 (r<sub>kv</sub>=128) ([ckpt](https://huggingface.co/amd/Zebra-Llama-3B-6MLA-22Mamba-DPO)) | **2.01%** | 3.39 B | 9 B | 50.77 | 76.09 | 71.46 | 50.06 | 43.4 | 77.26 | 42.49 | 66.46 | 59.75 |
 
 **Third)** Target model: **Llama3.1-8B-Inst**,  Teacher model: **Llama3.1-8B-Inst**
 | Model & Setting  | KV Size | Param | Tokens | ARC | ARE | HS | MMLU | OBQA | PIQA | RA | WG | Avg. |
 |-----------------|-------|-------|--------|----:|----:|---:|-----:|-----:|-----:|---:|---:|----:|
 | **Llama3.1-8B-Inst** | 100% |8.03 B | –  | 54.86 | 79.55 | 79.23 | 68.13 | 43 | 80.9 |  44.69 | 73.88 | 65.53 |
 |  X-EcoMLA (r<sub>kv</sub>=128)  | 9.37% | 8.03 B | 7 B | 56.57 | 79.04 | 77.38 | 58.6 | 42.8 | 79.6 | 48.33 | 70.96 | 64.16 |
-|  Zebra-Llama-16MLA-16M2 (r<sub>kv</sub>=160) | 5.47% | 8.19 B | 11 B | 58.62 | 78.37 | 79.27 | 58.17 | 43.4 | 80.03 |  49.28 | 72.61 | 64.97 |
-|  Zebra-Llama-8MLA-24M2 (r<sub>kv</sub>=128) | **2.73%** | 8.38 B | 11 B | 58.87 | 79.17 | 78.6 | 54.6 | 43.6 | 79.43 | 46.22 | 72.45 | 64.12 |
+|  Zebra-Llama-16MLA-16M2 (r<sub>kv</sub>=160) ([ckpt](https://huggingface.co/amd/Zebra-Llama-8B-16MLA-16Mamba-DPO)) | 5.47% | 8.19 B | 11 B | 58.62 | 78.37 | 79.27 | 58.17 | 43.4 | 80.03 |  49.28 | 72.61 | 64.97 |
+|  Zebra-Llama-8MLA-24M2 (r<sub>kv</sub>=128) ([ckpt](https://huggingface.co/amd/Zebra-Llama-8B-8MLA-24Mamba-DPO)) | **2.73%** | 8.38 B | 11 B | 58.87 | 79.17 | 78.6 | 54.6 | 43.6 | 79.43 | 46.22 | 72.45 | 64.12 |
 
 ## Acknowledgements
 
