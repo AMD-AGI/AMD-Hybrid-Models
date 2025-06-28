@@ -86,9 +86,9 @@ Choose the instructions based on your GPU hardware:
 
 ## Training for Instruct models
 
-X-EcoMLA utilizes a two-stage training strategy for optimal results:
+X-EcoMLA utilizes a two-stage training strategy to distill instruct models for optimal results:
 
-### Stage 1: End-to-End SFT Distillation
+### Stage 1: End-to-End Distillation
 
   * **Goal:** Transfer knowledge from a larger, pre-trained teacher model to the smaller student model (with the MLA architecture).
   * **Method:** Minimize the Kullback–Leibler (KL) divergence loss between the output distributions of the student and teacher models. We generally observe better results when using a larger teacher model.
@@ -122,18 +122,42 @@ X-EcoMLA utilizes a two-stage training strategy for optimal results:
 
 **Example Commands:**
    ```bash
-   ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_dpo.py configs/dpo.yaml <-- Update the paths in the config file
+   ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_dpo.py configs/dpo.yaml # <-- Update the paths in the config file
    ```
   **Note:** After training, need to get the `model.safetensors` using `accelerate merge-weights` for the evaluation.
 
-### Configuration
+## Continual Pre-Training
+
+X-EcoMLA can also be used to distill base models with pre-training. Here we provide two examples to perform continual pre-training for `SmolLM-1.7B` model.
+
+**Example Commands:**
+
+  * **SmolLM-1.7B, no teacher model, cross-entropy loss:**
+    ```bash
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train.py configs/SmolLM_1.7B/mla_kv_rank_480_pretrain_ce.yaml
+    ```
+  * **SmolLM-1.7B, self-distillation, KL divergence**
+    ```bash
+    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train.py configs/SmolLM_1.7B/mla_kv_rank_480_pretrain.yaml
+    ```
+    
+## Configuration
 
   * Training hyperparameters, model paths, dataset details, MLA configurations (e.g., KV rank, quantization bits), and FSDP settings are controlled by `.yaml` configuration files (e.g., `configs/llama3.2_1B/mla_kv_rank_64_8bt.yaml`, `configs/fsdp.yaml`).
   * Please inspect these files and modify them according to your specific needs (e.g., dataset paths, teacher/student model identifiers, compute resources).
 
 ## Evaluation
 
-To evaluate the performance of your trained X-EcoMLA model:
+We provide several checkpoints of X-EcoMLA for both pre-trained base models and instruct models [here](https://huggingface.co/collections/amd/amd-hybrid-models-67be591b09a4524abf65bcee). The test these checkpoints or your trained X-EcoMLA model, please run:
+   ```bash
+   python benchmark/llm_eval/lm_harness_eval.py \
+    --model mla_hybrid \
+    --model_args pretrained="amd/X-EcoMLA-1B1B-fixed-kv512-DPO" \  # Path to the checkpoint
+    --tasks mmlu,hellaswag,piqa,arc_easy,arc_challenge,winogrande,openbookqa,pubmedqa,race \  # List of tasks
+    --num_fewshot 0 --device cuda --batch_size 16
+   ```
+
+We also provide a script for batched evaluation:
 
 1.  **Update Checkpoint Path:** Modify the `eval.sh` script to point to the directory containing your final model checkpoint (saved after the DPO stage).
     ```bash
