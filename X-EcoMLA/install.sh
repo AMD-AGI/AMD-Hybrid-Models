@@ -40,12 +40,11 @@ if [ "$UPDATE_PKG" -eq 1 ]; then
     rm -rf lm-evaluation-harness
 
     pip install accelerate==0.34.1
-    pip install deepspeed==0.12.2
     pip install huggingface-hub==0.24.5
     pip install trl==0.8.6
     pip install peft==0.12.0
     pip install transformers==4.43.1
-    pip install triton -U
+    pip install triton==3.3.0
     pip install numpy==1.26.4
     pip install datasets==2.20.0
 
@@ -55,12 +54,7 @@ if [ "$UPDATE_PKG" -eq 1 ]; then
 
     cd $REPO_PATH
     trainsformer_path=$(python -c "import transformers; print(transformers.__path__[0])")
-    deepspeed_path="${trainsformer_path//transformers/deepspeed}"
-
-    cp patch/torch_checkpoint_engine.py $deepspeed_path/runtime/checkpoint_engine/torch_checkpoint_engine.py
     cp patch/transformer_trainer.py $trainsformer_path/trainer.py
-    cp patch/elastic_agent.py $deepspeed_path/elasticity/elastic_agent.py
-    cp patch/zero_to_fp32.py $deepspeed_path/utils/zero_to_fp32.py
 fi
 
 if [ "$FLASH_ATTN" -eq 1 ]; then
