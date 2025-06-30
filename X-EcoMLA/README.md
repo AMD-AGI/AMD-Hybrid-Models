@@ -126,6 +126,9 @@ X-EcoMLA utilizes a two-stage training strategy to distill instruct models for o
    ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml train_mla/train_dpo.py configs/dpo.yaml # <-- Update the paths in the config file
    ```
   **Note:** After training, need to get the `model.safetensors` using `accelerate merge-weights` for the evaluation.
+  ```bash
+   accelerate merge-weights global_step/pytorch_model_fsdp_0/ ./ # <-- Update the path to the latest checkpoint (e.g., global_step1000)
+   ```
 
 ## Continual Pre-Training
 
