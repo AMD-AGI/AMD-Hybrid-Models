@@ -1,5 +1,5 @@
 ckpts=(
-    "/home/guihonli@amd.com/X-EcoMLA/debug-mla_1b_kv_64_q_1424_dim32_1b_teacher-dpo"
+    "checkpoint_path"
 )
 
 
