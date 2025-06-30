@@ -70,11 +70,11 @@ Choose the instructions based on your GPU hardware:
 
   * **For NVIDIA H100/H200 GPUs:**
 
-      * We verified training using the `nvcr.io/nvidia/pytorch:25.01-py3` image.
+      * We verified training using the `nvcr.io/nvidia/pytorch:24.10-py3` image.
 
     ```bash
     # Launch the Docker container
-    docker run --gpus all -it -v $HOME:$HOME --shm-size 64G --rm nvcr.io/nvidia/pytorch:25.01-py3
+    docker run --gpus all -it -v $HOME:$HOME --shm-size 64G --rm nvcr.io/nvidia/pytorch:24.10-py3
     # Note: Adjust --shm-size based on your system capabilities.
 
     # Inside the container, navigate to the cloned repo and install dependencies
