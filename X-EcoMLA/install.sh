@@ -54,13 +54,17 @@ if [ "$UPDATE_PKG" -eq 1 ]; then
 
     cd $REPO_PATH
     trainsformer_path=$(python -c "import transformers; print(transformers.__path__[0])")
+    deepspeed_path="${trainsformer_path//transformers/deepspeed}"
+
     cp patch/transformer_trainer.py $trainsformer_path/trainer.py
+    cp patch/elastic_agent.py $deepspeed_path/elasticity/elastic_agent.py
 fi
 
 if [ "$FLASH_ATTN" -eq 1 ]; then
     pip uninstall flash_attn -y
     git clone https://github.com/Dao-AILab/flash-attention.git
     cd flash-attention/
+    git checkout v2.7.4.post1
     MAX_JOBS=128 python setup.py install
 fi
 
