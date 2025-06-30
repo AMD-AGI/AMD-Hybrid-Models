@@ -78,7 +78,7 @@ Choose the instructions based on your GPU hardware:
     # Note: Adjust --shm-size based on your system capabilities.
 
     # Inside the container, navigate to the cloned repo and install dependencies
-    cd /path/to/your/cloned/repo # e.g., cd /home/user/X-EcoMLA
+    cd /path/to/your/cloned/repo # e.g., cd /home/user/Zebra-Llama
     bash install.sh MAMBA=1
     ```
 
