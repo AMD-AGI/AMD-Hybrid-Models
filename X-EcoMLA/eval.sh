@@ -9,9 +9,10 @@ num_ckpts=${#ckpts[@]}
 for index in $(seq 0 $((num_ckpts-1))); do
     current_ckpt="${ckpts[$index]}"
     repo_path=`pwd`
-    if [ ! -f "${current_ckpt}/pytorch_model.bin" ]; then
+    if [ ! -f "${current_ckpt}/model.safetensors" ]; then
         # Navigate to the checkpoint directory
         pushd "$current_ckpt"
+        
         
         # Find the latest checkpoint directory (format: checkpoint-XXXX)
         latest_checkpoint=$(find . -maxdepth 1 -type d -name "checkpoint-*" | sort -V | tail -n 1)
@@ -28,9 +29,8 @@ for index in $(seq 0 $((num_ckpts-1))); do
         echo "Processing $current_ckpt with checkpoint $checkpoint_num"
         
         # Convert model
-        python zero_to_fp32.py "$latest_checkpoint" --output_file ./pytorch_model.bin
-        
-        if [ -f "./pytorch_model.bin" ]; then
+        accelerate merge-weights ${latest_checkpoint}/pytorch_model_fsdp_0/ ./
+        if [ -f "${current_ckpt}/model.safetensors" ]; then
             # Clean up
             rm -rf "$latest_checkpoint" "global_step$checkpoint_num"
         fi
