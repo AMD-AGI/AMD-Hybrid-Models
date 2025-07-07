@@ -233,7 +233,7 @@ This work builds upon the foundations laid by the [MambaInLlama](https://github.
 
 ## Citation
 
-If you find X-EcoMLA useful in your research or application, please cite our paper:
+If you find Zebra-Llama useful in your research or application, please cite our paper:
 
 ```bibtex
 @article{li2025x_ecomla,
