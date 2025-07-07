@@ -21,7 +21,7 @@ git clone
 cd efficient-hybrids
 conda env create -f env.yml
 conda activate hybrids
-
+```
 
 ## Repository Structure
 .
@@ -34,7 +34,7 @@ conda activate hybrids
     ├── README.md
     ├── scripts/
     └── configs/
-```
+
 ---
 
 ## Citation
