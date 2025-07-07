@@ -24,6 +24,7 @@ conda activate hybrids
 ```
 
 ## Repository Structure
+```
 .
 ├── env.yml              # Conda env for PyTorch, ROCm, and Hugging Face
 ├── x-eco-mla/           # Codebase for X-EcoMLA
@@ -34,6 +35,7 @@ conda activate hybrids
     ├── README.md
     ├── scripts/
     └── configs/
+```
 
 ---
 
