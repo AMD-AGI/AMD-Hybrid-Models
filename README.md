@@ -12,7 +12,7 @@ Large Language Models (LLMs) often face major memory bottlenecks due to large ke
 | `zebra-llama/`   | Implements **Zebra-Llama**: a family of hybrid MLA + Mamba2 models with minimal retraining and maximum efficiency. |
 
 
----
+ 
 
 ## 🧪 Quick Start
 
@@ -37,25 +37,34 @@ conda activate hybrids
     └── configs/
 ```
 
----
+ 
 
 ## Citation
-```
-@inproceedings{x-eco-mla,
-  title     = {X-EcoMLA: Upcycling Pre-Trained Attention into Multi-Layer Attention
-               for Extreme KV Cache Compression},
-  author    = {...},
-  year      = 2025
+If you find this repository useful in your research or application, please cite our paper:
+
+```bibtex
+@article{li2025x_ecomla,
+  title={{X-EcoMLA}: Upcycling Pre-Trained Attention into {MLA} for Efficient and Extreme {KV} Compression},
+  author={Li, Guihong and Rezagholizadeh, Mehdi and Yang, Mingyu and Appia, Vikram and Barsoum, Emad},
+  journal={arXiv preprint arXiv:2503.11132},
+  year={2025},
+  url={https://arxiv.org/abs/2503.11132}
 }
 
-@inproceedings{zebra-llama,
-  title     = {Zebra-Llama: Practical Hybrid Models with MLA and Mamba2},
-  author    = {...},
-  year      = 2025
+@article{yang2025zebra,
+  title={Zebra-Llama: Towards Extremely Efficient Hybrid Models},
+  author={Yang, Mingyu and Rezagholizadeh, Mehdi and Li, Guihong and Appia, Vikram and Barsoum, Emad},
+  journal={arXiv preprint arXiv:2505.17272},
+  year={2025}
 }
 ```
 
----
+
+ 
 
 ## 🤝 Contributing
 We welcome contributions! Please open an issue to discuss questions and major changes. 
+
+## License
+
+This project is licensed under the Apache License 2.0. See the [LICENSE](https://www.google.com/search?q=LICENSE) file for details.
