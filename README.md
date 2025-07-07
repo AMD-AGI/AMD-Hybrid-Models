@@ -34,8 +34,11 @@ conda activate hybrids
     ├── README.md
     ├── scripts/
     └── configs/
-## Citation
+```
+---
 
+## Citation
+```
 @inproceedings{x-eco-mla,
   title     = {X-EcoMLA: Upcycling Pre-Trained Attention into Multi-Layer Attention
                for Extreme KV Cache Compression},
@@ -48,6 +51,9 @@ conda activate hybrids
   author    = {...},
   year      = 2025
 }
+```
+
+---
 
 ## 🤝 Contributing
 We welcome contributions! Please open an issue to discuss questions and major changes. 
