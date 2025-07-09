@@ -1,4 +1,5 @@
 # AMD-Hybrid-Models
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0) [![arXiv](https://img.shields.io/badge/arXiv-2505.17272-b31b1b.svg)](https://arxiv.org/abs/2505.17272) [![arXiv](https://img.shields.io/badge/arXiv-2503.11132-b31b1b.svg)](https://arxiv.org/abs/2503.11132)
 
 ## 🔍 Overview: Efficient Hybrid Language Models on AMD GPUs  
 **Official Repository for _X-EcoMLA_ and _Zebra-Llama_**
