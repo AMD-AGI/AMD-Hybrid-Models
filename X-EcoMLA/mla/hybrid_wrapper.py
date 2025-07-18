@@ -115,7 +115,7 @@ class MLATransformerHybridModelWrapper(nn.Module):
     ):
         output = self.model.generate(
             input_ids,
-            use_cache=False,
+            use_cache=True,
             **kwargs,
         )
         return output
