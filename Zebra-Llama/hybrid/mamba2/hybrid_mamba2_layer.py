@@ -189,7 +189,7 @@ class Mamba2(nn.Module, PyTorchModelHubMixin):
                                               process_group=self.process_group, sequence_parallel=self.sequence_parallel,
                                               **factory_kwargs)
 
-    def forward(self, u, seqlen=None, seq_idx=None, cu_seqlens=None, inference_params=None):
+    def forward(self, u, seqlen=None, seq_idx=None, cu_seqlens=None, past_key_value=None):
         """
         u: (batch, seqlen, hidden_dim) if seqlen=None.
             If seqlen is not None, u is (batch * seqlen, hidden_dim). This is so that when we
@@ -205,10 +205,12 @@ class Mamba2(nn.Module, PyTorchModelHubMixin):
             batch = batch_seqlen // seqlen
 
         conv_state, ssm_state = None, None
-        if inference_params is not None:
+        if past_key_value is not None:
             inference_batch = cu_seqlens.shape[0] - 1 if cu_seqlens is not None else batch
-            conv_state, ssm_state = self._get_states_from_cache(inference_params, inference_batch)
-            if inference_params.seqlen_offset > 0:
+            conv_state = past_key_value.conv_states[self.layer_idx]
+            ssm_state = past_key_value.ssm_states[self.layer_idx]
+            
+            if conv_state.sum() != 0 and ssm_state.sum() != 0:
                 # The states are updated inplace
                 out, _, _ = self.step(u, conv_state, ssm_state)
                 return out
@@ -403,43 +405,3 @@ class Mamba2(nn.Module, PyTorchModelHubMixin):
             y = torch.cat([F.silu(z0) * x0, y], dim=-1)
         out = self.out_proj(y)
         return out.unsqueeze(1), conv_state, ssm_state
-
-    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
-        device = self.out_proj.weight.device
-        conv_dtype = self.conv1d.weight.dtype if dtype is None else dtype
-        conv_state = torch.zeros(
-            batch_size, self.d_conv, self.conv1d.weight.shape[0], device=device, dtype=conv_dtype
-        ).transpose(1, 2)
-        ssm_dtype = self.in_proj.weight.dtype if dtype is None else dtype
-        ssm_state = torch.zeros(
-            batch_size, self.nheads, self.headdim, self.d_state, device=device, dtype=ssm_dtype
-        )
-        return conv_state, ssm_state
-
-    def _get_states_from_cache(self, inference_params, batch_size, initialize_states=False):
-        assert self.layer_idx is not None
-        if self.layer_idx not in inference_params.key_value_memory_dict:
-            batch_shape = (batch_size,)
-            conv_state = torch.zeros(
-                batch_size,
-                self.d_conv,
-                self.conv1d.weight.shape[0],
-                device=self.conv1d.weight.device,
-                dtype=self.conv1d.weight.dtype,
-            ).transpose(1, 2)
-            ssm_state = torch.zeros(
-                batch_size,
-                self.nheads,
-                self.headdim,
-                self.d_state,
-                device=self.in_proj.weight.device,
-                dtype=self.in_proj.weight.dtype,
-            )
-            inference_params.key_value_memory_dict[self.layer_idx] = (conv_state, ssm_state)
-        else:
-            conv_state, ssm_state = inference_params.key_value_memory_dict[self.layer_idx]
-            # TODO: What if batch size changes between generation, and we reuse the same states?
-            if initialize_states:
-                conv_state.zero_()
-                ssm_state.zero_()
-        return conv_state, ssm_state

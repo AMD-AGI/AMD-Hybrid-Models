@@ -5,6 +5,7 @@ from transformers.activations import ACT2FN
 from hybrid.hybrid_config import HybridConfig
 from hybrid.mla.hybrid_mla_layer import DeepseekV3RMSNorm, DeepseekV3FlashAttention2, DeepseekV3Attention
 from transformers.cache_utils import Cache, DynamicCache
+from hybrid.hybrid_modeling import HybridDynamicCache
 
 import torch
 import torch.nn as nn
@@ -53,7 +54,7 @@ class MLADecoderLayer(nn.Module):
             hidden_states: torch.Tensor,
             attention_mask: Optional[torch.Tensor] = None,
             position_ids: Optional[torch.LongTensor] = None,
-            past_key_value: Optional[Tuple[torch.Tensor]] = None,
+            past_key_value: Optional[HybridDynamicCache] = None,
             output_attentions: Optional[bool] = False,
             use_cache: Optional[bool] = False,
             *args,
@@ -64,7 +65,6 @@ class MLADecoderLayer(nn.Module):
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states, self_attn_weights, present_key_value = self.mla(
             hidden_states=hidden_states,
-            attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_value=past_key_value,
             output_attentions=output_attentions,

@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, PreTrainedModel, is_wandb_available
 from transformers.models.llama.modeling_llama import LlamaDecoderLayer
-from hybrid.mamba2.hybrid_model import Mamba2DecoderLayer
 from trl.trainer.sft_trainer import SFTTrainer
 
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP

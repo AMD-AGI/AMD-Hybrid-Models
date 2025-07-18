@@ -2,8 +2,8 @@ from mamba_ssm.ops.triton.layer_norm import RMSNorm
 from torch import Tensor
 from transformers.activations import ACT2FN
 
-# from mla.hybrid_mla_config import MambaConfig
 from hybrid.mamba2.hybrid_mamba2_layer import Mamba2
+from hybrid.hybrid_modeling import HybridDynamicCache
 
 import torch
 import torch.nn as nn
@@ -45,10 +45,10 @@ class Mamba2DecoderLayer(nn.Module):
     def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
         return self.mamba.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
 
-    def forward(self, hidden_states: Tensor, inference_params=None, *args, **kwargs):        
+    def forward(self, hidden_states: Tensor, past_key_value=None, *args, **kwargs):        
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
-        hidden_states = self.mamba(hidden_states, inference_params=inference_params)
+        hidden_states = self.mamba(hidden_states, past_key_value=past_key_value)
         hidden_states = residual + hidden_states
 
         residual = hidden_states
