@@ -3,14 +3,14 @@ from transformers import AutoTokenizer
 from hybrid.hybrid_wrapper import HybridModelWrapper
 
 
-checkpoint_path = "amd/Zebra-Llama-1B-4MLA-12Mamba-DPO"
+checkpoint_path = "amd/Zebra-Llama-8B-16MLA-16Mamba-DPO"
 
 model = HybridModelWrapper.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16).cuda()
 tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
 model.eval()
 
 
-prompt = [{"role": "user", "content": "What are the benefits of hybrid language models?"}]
+prompt = [{"role": "user", "content": "What are the advantages of hybrid language models"}]
 input_ids = tokenizer.apply_chat_template(
     prompt,
     add_generation_prompt=True,
