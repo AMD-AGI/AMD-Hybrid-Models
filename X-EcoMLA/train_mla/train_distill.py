@@ -203,6 +203,19 @@ def main():
             d_xb = config.num_key_value_heads * config.head_dim
             d_inner = config.num_attention_heads * config.head_dim
             d_state = config.head_dim
+        
+        # Set up positional embeddings
+        if config.rope_scaling is not None:
+            rope_scaling = {
+                "factor": config.rope_scaling["factor"],
+                "beta_fast": 32,
+                "beta_slow": 1,
+                "mscale": 1.0,
+                "mscale_all_dim": 0.0,
+                "type": "yarn",
+            }
+        else:
+            rope_scaling = None
 
         mla_layer_config = DeepseekV3Config(
             hidden_size=d_inner,
@@ -223,7 +236,7 @@ def main():
             v_head_dim=training_args.v_head_dim,
             qk_nope_head_dim=training_args.qk_nope_head_dim,
             attention_bias=config.attention_bias,
-            rope_scaling=config.rope_scaling,
+            rope_scaling=rope_scaling,
         )
         mla_config = MLAConfig(
             config.hidden_size,
