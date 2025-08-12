@@ -12,7 +12,7 @@ from trl.trainer.sft_trainer import SFTTrainer
 
 from torch.distributed.fsdp.fully_sharded_data_parallel import FullyShardedDataParallel as FSDP
 from functools import partial
-
+from hybrid.hybrid_modeling import CustomLlamaForCausalLM
 from train_configs import SFTDistillConfig
 
 class KDTrainer(SFTTrainer):
@@ -21,6 +21,7 @@ class KDTrainer(SFTTrainer):
     def __init__(
         self,
         teacher_model: Union[PreTrainedModel, nn.Module, str],
+        hybrid_config,
         args: Optional[SFTDistillConfig] = None,
         torch_dtype = torch.bfloat16,
         *sft_args,
@@ -42,7 +43,7 @@ class KDTrainer(SFTTrainer):
                 "`AutoModelForCausalLM`"
             )
             print("teacher_model_init_kwargs:", teacher_model_init_kwargs)
-            teacher_model = AutoModelForCausalLM.from_pretrained(teacher_model, **teacher_model_init_kwargs)
+            teacher_model = CustomLlamaForCausalLM.from_pretrained(teacher_model, hybrid_config, **teacher_model_init_kwargs)
         
         self.teacher_model = self.prepare_fsdp(teacher_model, evaluation_mode=True)
 
@@ -60,26 +61,31 @@ class KDTrainer(SFTTrainer):
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
                 labels=inputs["labels"],
-                output_hidden_states=self.args.ILD
+                output_hidden_states=self.args.ILD,
+                output_attentions=self.args.ILD,
             )
         
         if self.args.ILD:
             # Intermediate layer distillation
             teacher_all_states = outputs_teacher["hidden_states"]
+            teacher_all_attn_out = outputs_teacher["attentions"]
             
             outputs_student = model(
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"],
                 labels=inputs["labels"],
                 output_hidden_states=self.args.ILD,
+                output_attentions=self.args.ILD,
                 layer_input=teacher_all_states
                 )
             
             student_all_states = outputs_student["hidden_states"]
+            student_all_attn_out = outputs_student["attentions"]
 
             loss = 0
             for layer_idx in range(1, len(teacher_all_states)):
-                loss_value = torch.norm(student_all_states[layer_idx] - teacher_all_states[layer_idx], p=2, dim=(-1,)).mean()
+                loss_value = torch.norm(student_all_states[layer_idx] - teacher_all_states[layer_idx], p=2, dim=(-1,)).mean() \
+                         + 1.0 * torch.norm(teacher_all_attn_out[layer_idx-1] - student_all_attn_out[layer_idx-1], p=2, dim=(-1,)).mean()
                 loss += loss_value
 
         else:
@@ -119,7 +125,7 @@ class KDTrainer(SFTTrainer):
             fsdp_plugin = deepcopy(self.accelerator.state.fsdp_plugin)
 
             fsdp_wrap_policy = partial(
-                fsdp_plugin.auto_wrap_policy, transformer_layer_cls=set([LlamaDecoderLayer])
+                fsdp_plugin.auto_wrap_policy, transformer_layer_cls=set(type(layer) for layer in model.model.layers)
             )
             # setattr(fsdp_plugin.mixed_precision_policy, '_module_classes_to_ignore', None)
             kwargs = {

@@ -114,6 +114,14 @@ class SFTDistillConfig(SFTConfig):
         default=1,
         metadata={"help": "Indicates the portion of training data."},
     )
+    factor: float = field(
+        default=1.0,
+        metadata={"help": "Define RoPE scaling factor."},
+    )
+    original_max_position_embeddings: int = field(
+        default=2048,
+        metadata={"help": "Indicates the portion of training data."},
+    )
 
 # Copy from HuggingFace H4ArgumentParser
 class DistillArgumentParser(HfArgumentParser):
