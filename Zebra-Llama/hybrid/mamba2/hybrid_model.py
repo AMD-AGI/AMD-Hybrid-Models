@@ -49,6 +49,7 @@ class Mamba2DecoderLayer(nn.Module):
         residual = hidden_states
         hidden_states = self.input_layernorm(hidden_states)
         hidden_states = self.mamba(hidden_states, past_key_value=past_key_value)
+        attn_output = hidden_states.clone()
         hidden_states = residual + hidden_states
 
         residual = hidden_states
@@ -77,7 +78,7 @@ class Mamba2DecoderLayer(nn.Module):
                 past_key_value.update(dummy_keys, dummy_values, self.layer_idx)
 
             if output_attentions:
-                outputs += (None,)
+                outputs += (attn_output,)
 
             if use_cache:
                 outputs += (past_key_value,)

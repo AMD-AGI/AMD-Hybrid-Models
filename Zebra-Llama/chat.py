@@ -2,8 +2,8 @@ import torch
 from transformers import AutoTokenizer
 from hybrid.hybrid_wrapper import HybridModelWrapper
 
-
-checkpoint_path = "amd/Zebra-Llama-8B-16MLA-16Mamba-DPO"
+checkpoint_path = "/home/mnt/mingyyan/checkpoints/hybrid_QWEN_7B_7B_mla_8_mamba20_Fix96_qr1536_qh64_stage2-dpo"
+# checkpoint_path = "amd/Zebra-Llama-8B-16MLA-16Mamba-DPO" 
 
 model = HybridModelWrapper.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16).cuda()
 tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)

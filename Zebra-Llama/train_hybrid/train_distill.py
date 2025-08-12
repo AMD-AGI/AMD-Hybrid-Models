@@ -208,6 +208,13 @@ def main():
             d_inner = config.num_attention_heads * config.head_dim
             d_state = config.head_dim
         
+        # Set up positional embeddings
+        rope_scaling = {
+            "factor": training_args.factor,
+            "original_max_position_embeddings": training_args.original_max_position_embeddings,
+            "rope_type": "yarn",
+        }
+        
         hybrid_config = HybridConfig(
             # Common parameters
             hidden_size=config.hidden_size,
@@ -233,7 +240,7 @@ def main():
             v_head_dim=training_args.v_head_dim,
             qk_nope_head_dim=training_args.qk_nope_head_dim,
             attention_bias=config.attention_bias,
-            rope_scaling=config.rope_scaling,
+            rope_scaling=rope_scaling,
             # Mamba Parameters
             d_model=config.hidden_size,
             ssm_cfg={"expand": 1, "ngroups":config.num_attention_heads, "d_state": d_state, "repeat_kv_before_conv": training_args.repeat_kv_before_conv},
@@ -247,6 +254,7 @@ def main():
         model = MLATransformerHybridModelWrapper.from_pretrained(model_args.model_name_or_path, attn_implementation=attn_implementation)
     
     print("#Params:", sum(p.numel() for p in model.parameters() if p.requires_grad))
+
     model.save_config(training_args.output_dir, config_file_path)
     model = model.model
     
@@ -270,6 +278,7 @@ def main():
     trainer = KDTrainer(
         model=model,
         teacher_model=training_args.teacher_model_name_or_path,
+        hybrid_config=hybrid_config,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
@@ -321,16 +330,16 @@ def main():
     ##########
     # Evaluate
     ##########
-    if training_args.do_eval:
-        logger.info("*** Evaluate ***")
-        metrics = trainer.evaluate()
-        metrics["eval_samples"] = len(eval_dataset)
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
+    # if training_args.do_eval:
+    #     logger.info("*** Evaluate ***")
+    #     metrics = trainer.evaluate()
+    #     metrics["eval_samples"] = len(eval_dataset)
+    #     trainer.log_metrics("eval", metrics)
+    #     trainer.save_metrics("eval", metrics)
 
-    if training_args.push_to_hub is True:
-        logger.info("Pushing to hub...")
-        trainer.push_to_hub(**kwargs)
+    # if training_args.push_to_hub is True:
+    #     logger.info("Pushing to hub...")
+    #     trainer.push_to_hub(**kwargs)
 
     logger.info("*** Training complete ***")
 

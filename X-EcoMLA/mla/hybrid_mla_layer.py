@@ -497,8 +497,7 @@ class DeepseekV3Attention(nn.Module):
                 base=self.rope_theta,
             )
         else:
-            rope_type = self.config.rope_type
-            self.rope_type = rope_type
+            rope_type = self.config.rope_scaling["type"]
             scaling_factor = self.config.rope_scaling["factor"]
             if rope_type == "linear":
                 self.rotary_emb = DeepseekV3LinearScalingRotaryEmbedding(

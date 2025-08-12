@@ -352,6 +352,19 @@ class Mamba2(nn.Module, PyTorchModelHubMixin):
             [d_mlp, d_mlp, self.d_ssm, self.d_ssm + 2 * self.d_xb, self.nheads],
             dim=-1
         )
+        
+        if self.repeat_kv_before_conv:
+            x, B, C = torch.split(xBC, [self.d_xb, self.d_xb, self.ngroups * self.d_state], dim=-1)
+            # minic the GQA
+            x = rearrange(x, "b (xb_group dstate) -> b xb_group dstate", dstate=self.d_state)
+            x = repeat_kv(x.unsqueeze(2), self.repeat_group).squeeze(2)
+            # x shape: (bsz, n_group, l, dim)
+            B = rearrange(B, "b (xb_group dstate) -> b xb_group dstate", dstate=self.d_state)
+            B = repeat_kv(B.unsqueeze(2), self.repeat_group).squeeze(2)
+            # combine x, B, C
+            x = rearrange(x, "b g p -> b (g p)")
+            B = rearrange(B, "b g p -> b (g p)")
+            xBC = torch.cat((x, B, C), dim=-1)
 
         # Conv step
         if causal_conv1d_update is None:
@@ -369,18 +382,51 @@ class Mamba2(nn.Module, PyTorchModelHubMixin):
                 self.conv1d.bias,
                 self.activation,
             )
-
-        A = -torch.exp(self.A_log.float())  # (nheads,)
-
-        x, B, C = torch.split(xBC, [self.d_xb, self.d_xb, self.ngroups * self.d_state], dim=-1)
         
-        # minic the GQA
-        x = rearrange(x, "b (xb_group dstate) -> b xb_group dstate", dstate=self.d_state)
-        x_reshaped = torch.repeat_interleave(x, dim=1, repeats=self.repeat_group)
+            # y = mamba_chunk_scan_combined(
+            #     rearrange(x, "b l (h p) -> b l h p", p=self.headdim),
+            #     dt,
+            #     A,
+            #     rearrange(B, "b l (g n) -> b l g n", g=self.ngroups),
+            #     rearrange(C, "b l (g n) -> b l g n", g=self.ngroups),
+            #     chunk_size=self.chunk_size,
+            #     D=rearrange(self.D, "(h p) -> h p", p=self.headdim) if self.D_has_hdim else self.D,
+            #     z=rearrange(z, "b l (h p) -> b l h p", p=self.headdim) if not self.rmsnorm else None,
+            #     dt_bias=self.dt_bias,
+            #     dt_softplus=True,
+            #     seq_idx=seq_idx,
+            #     cu_seqlens=cu_seqlens,
+            #     **dt_limit_kwargs,
+            #     return_final_states=ssm_state is not None,
+            #     return_varlen_states=cu_seqlens is not None and inference_params is not None,
+            # )
 
-        B = rearrange(B, "b (xb_group dstate) -> b xb_group dstate", dstate=self.d_state)
-        B = torch.repeat_interleave(B, dim=1, repeats=self.repeat_group)
+
+        if not self.repeat_kv_before_conv:
+            x, B, C = torch.split(xBC, [self.d_xb, self.d_xb, self.ngroups * self.d_state], dim=-1)
+
+            # xBC = causal_conv1d_update(xBC,conv_state,rearrange(self.conv1d.weight, "d 1 w -> d w"),self.conv1d.bias,self.activation,)
+            A = -torch.exp(self.A_log.float())  # (nheads,)
+
+            x, B, C = torch.split(xBC, [self.d_xb, self.d_xb, self.ngroups * self.d_state], dim=-1)
         
+            # minic the GQA
+            x = rearrange(x, "b (xb_group dstate) -> b xb_group dstate", dstate=self.d_state)
+            x_reshaped = torch.repeat_interleave(x, dim=1, repeats=self.repeat_group)
+
+            B = rearrange(B, "b (xb_group dstate) -> b xb_group dstate", dstate=self.d_state)
+            B = torch.repeat_interleave(B, dim=1, repeats=self.repeat_group)
+        
+        else: 
+            
+            x, B, C = torch.split(xBC, [self.ngroups * self.d_state, self.ngroups * self.d_state, self.ngroups * self.d_state], dim=-1)
+
+            A = -torch.exp(self.A_log.float())  # (nheads,)
+            x, B, C = torch.split(xBC, [self.ngroups * self.d_state, self.ngroups * self.d_state, self.ngroups * self.d_state], dim=-1)
+            x_reshaped = rearrange(x, "b (h p) -> b h p", p=self.headdim)
+            B = rearrange(B, "b (g n) -> b g n", g=self.ngroups)
+
+
         # SSM step
         assert selective_state_update is not None
             

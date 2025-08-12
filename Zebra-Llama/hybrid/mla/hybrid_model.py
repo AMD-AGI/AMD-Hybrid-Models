@@ -71,6 +71,7 @@ class MLADecoderLayer(nn.Module):
             use_cache=use_cache,
             **kwargs,
         )
+        attn_output = hidden_states.clone()
         hidden_states = residual + hidden_states
 
         residual = hidden_states
@@ -81,7 +82,7 @@ class MLADecoderLayer(nn.Module):
         outputs = (hidden_states,)
 
         if output_attentions:
-            outputs += (self_attn_weights,)
+            outputs += (attn_output,)
 
         if use_cache:
             outputs += (present_key_value,)
