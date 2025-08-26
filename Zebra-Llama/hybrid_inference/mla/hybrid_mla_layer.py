@@ -62,11 +62,11 @@ from einops import rearrange
 
 from hybrid.mla.hybrid_mla_layer import (
     DeepseekV3RMSNorm, 
-    DeepseekV3RotaryEmbedding, 
-    DeepseekV3LinearScalingRotaryEmbedding, 
-    DeepseekV3YarnRotaryEmbedding,
-    DeepseekV3DynamicNTKScalingRotaryEmbedding,
-    DeepseekV3YarnRotaryEmbedding
+    # DeepseekV3RotaryEmbedding, 
+    # DeepseekV3LinearScalingRotaryEmbedding, 
+    # DeepseekV3YarnRotaryEmbedding,
+    # DeepseekV3DynamicNTKScalingRotaryEmbedding,
+    # DeepseekV3YarnRotaryEmbedding
     )
 from huggingface_hub import PyTorchModelHubMixin
 
@@ -106,7 +106,6 @@ ALL_LAYERNORM_LAYERS.append(DeepseekV3RMSNorm)
 def _update_kv_cache(kv, inference_params, layer_idx):
     """kv: (batch_size, seqlen, head_dim) or (batch_size, 1, head_dim)"""
     # Pre-allocate memory for key-values for inference.
-    head_dim = kv.shape[-1]
     assert layer_idx in inference_params.key_value_memory_dict
     kv_cache, _ = inference_params.key_value_memory_dict[layer_idx]
     # Adjust key and value for inference
@@ -119,6 +118,217 @@ def _update_kv_cache(kv, inference_params, layer_idx):
     assert kv_cache is not None
     kv_cache[batch_start:batch_end, sequence_start:sequence_end, ...] = kv
     return kv_cache[batch_start:batch_end, :sequence_end, ...]
+
+
+class DeepseekV3RotaryEmbedding(nn.Module):
+    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
+        super().__init__()
+
+        self.dim = dim
+        self.max_position_embeddings = max_position_embeddings
+        self.base = base
+        inv_freq = 1.0 / (
+            self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim)
+        )
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        # Build here to make `torch.jit.trace` work.
+        self._set_cos_sin_cache(
+            seq_len=max_position_embeddings,
+            device=self.inv_freq.device,
+            dtype=torch.get_default_dtype(),
+        )
+        self.max_seq_len_cached = None
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(
+            self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype
+        )
+
+        freqs = torch.outer(t, self.inv_freq.to(t.device))
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
+
+    def forward(self, x, seq_len=None):
+        # x: [bs, num_attention_heads, seq_len, head_size]
+        if self.max_seq_len_cached is None or seq_len > self.max_seq_len_cached:
+            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+
+        return (
+            self.cos_cached[:seq_len].to(dtype=x.dtype),
+            self.sin_cached[:seq_len].to(dtype=x.dtype),
+        )
+
+# Copied from transformers.models.llama.modeling_llama.LlamaLinearScalingRotaryEmbedding with Llama->DeepseekV3
+class DeepseekV3LinearScalingRotaryEmbedding(DeepseekV3RotaryEmbedding):
+    """DeepseekV3RotaryEmbedding extended with linear scaling. Credits to the Reddit user /u/kaiokendev"""
+
+    def __init__(
+        self,
+        dim,
+        max_position_embeddings=2048,
+        base=10000,
+        device=None,
+        scaling_factor=1.0,
+    ):
+        self.scaling_factor = scaling_factor
+        super().__init__(dim, max_position_embeddings, base, device)
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        t = torch.arange(
+            self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype
+        )
+        t = t / self.scaling_factor
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
+
+
+# Copied from transformers.models.llama.modeling_llama.LlamaDynamicNTKScalingRotaryEmbedding with Llama->DeepseekV3
+class DeepseekV3DynamicNTKScalingRotaryEmbedding(DeepseekV3RotaryEmbedding):
+    """DeepseekV3RotaryEmbedding extended with Dynamic NTK scaling. Credits to the Reddit users /u/bloc97 and /u/emozilla"""
+
+    def __init__(
+        self,
+        dim,
+        max_position_embeddings=2048,
+        base=10000,
+        device=None,
+        scaling_factor=1.0,
+    ):
+        self.scaling_factor = scaling_factor
+        super().__init__(dim, max_position_embeddings, base, device)
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+
+        if seq_len > self.max_position_embeddings:
+            base = self.base * (
+                (self.scaling_factor * seq_len / self.max_position_embeddings)
+                - (self.scaling_factor - 1)
+            ) ** (self.dim / (self.dim - 2))
+            inv_freq = 1.0 / (
+                base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim)
+            )
+            self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        t = torch.arange(
+            self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype
+        )
+
+        freqs = torch.outer(t, self.inv_freq)
+        # Different from paper, but it uses a different permutation in order to obtain the same calculation
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer("cos_cached", emb.cos().to(dtype), persistent=False)
+        self.register_buffer("sin_cached", emb.sin().to(dtype), persistent=False)
+
+# Inverse dim formula to find dim based on number of rotations
+def yarn_find_correction_dim(
+    num_rotations, dim, base=10000, max_position_embeddings=2048
+):
+    return (dim * math.log(max_position_embeddings / (num_rotations * 2 * math.pi))) / (
+        2 * math.log(base)
+    )
+
+# Find dim range bounds based on rotations
+def yarn_find_correction_range(
+    low_rot, high_rot, dim, base=10000, max_position_embeddings=2048
+):
+    low = math.floor(
+        yarn_find_correction_dim(low_rot, dim, base, max_position_embeddings)
+    )
+    high = math.ceil(
+        yarn_find_correction_dim(high_rot, dim, base, max_position_embeddings)
+    )
+    return max(low, 0), min(high, dim - 1)  # Clamp values just in case
+
+def yarn_get_mscale(scale=1, mscale=1):
+    if scale <= 1:
+        return 1.0
+    return 0.1 * mscale * math.log(scale) + 1.0
+
+def yarn_linear_ramp_mask(min, max, dim):
+    if min == max:
+        max += 0.001  # Prevent singularity
+
+    linear_func = (torch.arange(dim, dtype=torch.float32) - min) / (max - min)
+    ramp_func = torch.clamp(linear_func, 0, 1)
+    return ramp_func
+
+class DeepseekV3YarnRotaryEmbedding(DeepseekV3RotaryEmbedding):
+
+    def __init__(
+        self,
+        dim,
+        max_position_embeddings=2048,
+        base=10000,
+        device=None,
+        scaling_factor=1.0,
+        original_max_position_embeddings=4096,
+        beta_fast=32,
+        beta_slow=1,
+        mscale=1,
+        mscale_all_dim=0,
+    ):
+        self.scaling_factor = scaling_factor
+        self.original_max_position_embeddings = original_max_position_embeddings
+        self.beta_fast = beta_fast
+        self.beta_slow = beta_slow
+        self.mscale = mscale
+        self.mscale_all_dim = mscale_all_dim
+        super().__init__(dim, max_position_embeddings, base, device)
+
+    def _set_cos_sin_cache(self, seq_len, device, dtype):
+        self.max_seq_len_cached = seq_len
+        dim = self.dim
+
+        freq_extra = 1.0 / (
+            self.base
+            ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim)
+        )
+        freq_inter = 1.0 / (
+            self.scaling_factor
+            * self.base
+            ** (torch.arange(0, dim, 2, dtype=torch.float32, device=device) / dim)
+        )
+
+        low, high = yarn_find_correction_range(
+            self.beta_fast,
+            self.beta_slow,
+            dim,
+            self.base,
+            self.original_max_position_embeddings,
+        )
+        inv_freq_mask = 1.0 - yarn_linear_ramp_mask(low, high, dim // 2).to(
+            device=device, dtype=torch.float32
+        )
+        inv_freq = freq_inter * (1 - inv_freq_mask) + freq_extra * inv_freq_mask
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+        t = torch.arange(seq_len, device=device, dtype=torch.float32)
+
+        freqs = torch.outer(t, inv_freq)
+
+        _mscale = float(
+            yarn_get_mscale(self.scaling_factor, self.mscale)
+            / yarn_get_mscale(self.scaling_factor, self.mscale_all_dim)
+        )
+
+        emb = torch.cat((freqs, freqs), dim=-1)
+        self.register_buffer(
+            "cos_cached", (emb.cos() * _mscale).to(dtype), persistent=False 
+        )
+        self.register_buffer(
+            "sin_cached", (emb.sin() * _mscale).to(dtype), persistent=False
+        )
+
 
 # Copied from transformers.models.llama.modeling_llama.rotate_half
 def rotate_half(x):
@@ -149,19 +359,22 @@ def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
     Returns:
         `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
     """
-    if position_ids is not None:
-        cos = cos[position_ids[0]:position_ids[1], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
-        sin = sin[position_ids[0]:position_ids[1], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
-    else:
-        cos = cos[:q.shape[2], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
-        sin = sin[:q.shape[2], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
 
+    if position_ids is not None:
+        cos = cos[position_ids:position_ids+1].unsqueeze(0).unsqueeze(unsqueeze_dim)
+        sin = sin[position_ids:position_ids+1].unsqueeze(0).unsqueeze(unsqueeze_dim)
+    else:
+        # If position_ids are not provided, we use the default positions
+        seq_len = q.shape[-2]
+        cos = cos[:seq_len].unsqueeze(0).unsqueeze(unsqueeze_dim)
+        sin = sin[:seq_len].unsqueeze(0).unsqueeze(unsqueeze_dim)
+    
     b, h, s, d = q.shape
     q = q.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
 
     b, h, s, d = k.shape
     k = k.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
-    
+
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -263,6 +476,12 @@ class DeepseekV3FlashAttention2(nn.Module):
             if mscale_all_dim:
                 mscale = yarn_get_mscale(scaling_factor, mscale_all_dim)
                 self.softmax_scale = self.softmax_scale * mscale * mscale
+    
+    def _init_merge(self):
+        wkv_b = self.kv_b_proj.weight.view(self.num_kv_heads, self.qk_nope_head_dim+self.v_head_dim, -1)
+        wkv_b = torch.repeat_interleave(wkv_b, repeats=self.num_heads//self.num_kv_heads, dim=0)
+        self.register_buffer("wk_b", wkv_b[:, :self.qk_nope_head_dim, :], persistent=True)
+        self.register_buffer("wv_b", wkv_b[:, self.qk_nope_head_dim:, :], persistent=True)
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -272,8 +491,7 @@ class DeepseekV3FlashAttention2(nn.Module):
                 base=self.rope_theta,
             )
         else:
-            rope_type = self.config.rope_type
-            self.rope_type = rope_type
+            rope_type = self.config.rope_scaling["rope_type"]
             scaling_factor = self.config.rope_scaling["factor"]
             if rope_type == "linear":
                 self.rotary_emb = DeepseekV3LinearScalingRotaryEmbedding(
@@ -324,7 +542,7 @@ class DeepseekV3FlashAttention2(nn.Module):
         dtype = self.kv_a_proj_with_mqa.weight.dtype if dtype is None else dtype
         device = self.kv_a_proj_with_mqa.weight.device
         conv_state = None
-        kv_cache = torch.zeros(
+        kv_cache = torch.randn(
             batch_size, max_seqlen, self.kv_lora_rank+self.qk_rope_head_dim, dtype=dtype, device=device,
         )
         return kv_cache, conv_state
@@ -416,12 +634,92 @@ class DeepseekV3FlashAttention2(nn.Module):
             x = torch.einsum("bshc,hdc->bshd", x, wv_b)
             return x
 
+    def forward_static_1( 
+            self, 
+            hidden_states: torch.Tensor,
+            inference_params=None,
+            **kwargs,):
+
+        x = hidden_states
+        bsz, _, _ = x.size()
+        
+        # Get queries
+        if self.q_lora_rank is None:
+            q = self.q_proj(x) 
+        else:
+            q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(x)))
+
+        q = q.view(bsz, 1, self.num_heads, self.q_head_dim)
+
+        # Divide it into q_nope and q_pe
+        q_nope, q_pe = torch.split(
+                q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1
+            )
+        
+        # Get the compressed kv and kp
+        compressed_kv = self.kv_a_proj_with_mqa(x)
+        compressed_kv, k_pe = torch.split(
+            compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
+        )
+        compressed_kv = self.kv_a_layernorm(compressed_kv)
+        k_pe = k_pe.view(bsz, 1, 1, self.qk_rope_head_dim)
+
+        # Apply rope to k_pe and p_pe
+        cos, sin = self.rotary_emb(k_pe, seq_len=inference_params.max_seqlen)
+        
+        return q_nope, q_pe, k_pe, cos, sin, compressed_kv
+
+
+    def forward_static_2(self, x):        
+        x = torch.einsum("bshc,hdc->bshd", x, self.wv_b)
+        context = rearrange(x, "... h d -> ... (h d)")
+        out = self.out_proj(context)
+        return out
+
+
+    def forward_dynamic(self, q_nope, q_pe, k_pe, cos, sin, compressed_kv, inference_params, position_ids=None):
+        
+        # Apply positional embedding
+        q_pe, k_pe = apply_rotary_pos_emb(q_pe, k_pe, cos, sin, inference_params.seqlen_offset)
+        k_pe = k_pe.view(q_nope.shape[0], 1, self.qk_rope_head_dim)
+        compressed_kv_comb = torch.cat([compressed_kv, k_pe], dim=-1)
+        # q_nope = q_nope.transpose(1,2)
+        # q_pe = q_pe.transpose(1,2)
+
+        # Update kv cache
+        kv_cache, _ = inference_params.key_value_memory_dict[self.layer_idx]
+        # Adjust key and value for inference
+        batch_start = inference_params.batch_size_offset
+        batch_end = batch_start + compressed_kv_comb.shape[0]
+        sequence_start = inference_params.seqlen_offset
+        sequence_end = sequence_start + compressed_kv_comb.shape[1]
+        assert batch_end <= kv_cache.shape[0]
+        assert sequence_end <= kv_cache.shape[1]
+        assert kv_cache is not None
+        kv_cache[batch_start:batch_end, sequence_start:sequence_end, ...] = compressed_kv_comb
+        compressed_kv = kv_cache[batch_start:batch_end, :sequence_end, ...]
+        
+        # MLA inference implementation
+        compressed_kv, k_pe = compressed_kv[..., :self.kv_lora_rank], compressed_kv[..., -self.qk_rope_head_dim:]
+        # compressed_kv = compressed_kv.transpose(-2, -1).unsqueeze(1)
+        # k_pe = k_pe.transpose(-2, -1).unsqueeze(1)
+
+        q_nope = torch.einsum("bshd,hdc->bshc", q_nope, self.wk_b)
+        # q_nope = torch.matmul(q_nope, self.wk_b)
+        scores = (torch.einsum("bshc,btc->bsht", q_nope, compressed_kv) +
+                          torch.einsum("bshr,btr->bsht", q_pe, k_pe)) * self.softmax_scale
+        # scores = (torch.matmul(q_nope, compressed_kv) + torch.matmul(q_pe, k_pe)) * self.softmax_scale
+        scores = scores.softmax(dim=-1).type_as(q_nope)
+        x = torch.einsum("bsht,btc->bshc", scores, compressed_kv)
+        # x = torch.matmul(scores, compressed_kv.transpose(-2,-1))
+        return x
 
 
     def forward(
             self, 
             hidden_states: torch.Tensor,
             inference_params=None,
+            position_ids=None,
             **kwargs,
             ):
         """
@@ -473,7 +771,8 @@ class DeepseekV3FlashAttention2(nn.Module):
 
         # Apply rope to k_pe and p_pe
         cos, sin = self.rotary_emb(k_pe, seq_len=inference_params.max_seqlen)
-        positions = [inference_params.seqlen_offset, inference_params.seqlen_offset+q_len]
+
+        positions = inference_params.seqlen_offset if position_ids is not None else None
         q_pe, k_pe = apply_rotary_pos_emb(q_pe, k_pe, cos, sin, positions)
 
         # Prepare the contents that need to be stored in the kv cache

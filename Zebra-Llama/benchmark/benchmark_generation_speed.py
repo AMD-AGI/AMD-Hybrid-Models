@@ -12,9 +12,10 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import sys
 import numpy as np 
 
-sys.path.append('/home/mingyyan/AMD-Hybrid-Models')
+sys.path.append('/home/mingyyan@amd.com/AMD-Hybrid-Models/Zebra-Llama')
 from hybrid.hybrid_config import HybridConfig
 from hybrid_inference.hybrid_model_wrapper import HybridModelWrapper
+# from hybrid.hybrid_wrapper import HybridModelWrapper
 
 
 @torch.inference_mode()
@@ -65,8 +66,8 @@ def measure_inference_speed_and_memory(input_ids, generate_fn, repeat_time):
         print(f"Run {i + 1}:")
         print(f"Generation Length: {output.shape[1]} tokens")
         print(f"Total Tokens Generated: {total_tokens}")
-        print(f"Total Time: {total_time:.2f} seconds")
-        print(f"Tokens per Second: {tokens_per_second:.2f}")
+        # print(f"Total Time: {total_time:.2f} seconds")
+        # print(f"Tokens per Second: {tokens_per_second:.2f}")
         print(f"Initial Memory Usage: {initial_memory_mb:.4f} GB")
         print(f"Peak Memory Usage: {peak_memory_mb:.4f} GB")
         print(f"Memory Used During Inference: {memory_used_mb:.4f} GB")
@@ -81,8 +82,8 @@ def measure_inference_speed_and_memory(input_ids, generate_fn, repeat_time):
     std_memory_used = np.std(memory_used_list, ddof=1) 
 
     print(f"Average Results for {output.shape[1]} tokens:")
-    print(f"  Average ± SD Total Time: {avg_total_time:.2f} ± {std_total_time:.2f} seconds")
-    print(f"  Average ± SD Tokens per Second: {avg_tokens_per_second:.2f} ± {std_tokens_per_second:.2f}")
+    # print(f"  Average ± SD Total Time: {avg_total_time:.2f} ± {std_total_time:.2f} seconds")
+    # print(f"  Average ± SD Tokens per Second: {avg_tokens_per_second:.2f} ± {std_tokens_per_second:.2f}")
     print(f"  Average ± SD Memory Used During Inference: {avg_memory_used:.2f} ± {std_memory_used:.2f} MB")
     print("======")
 
@@ -128,11 +129,15 @@ def main(args):
         n_layer=32
         q_lora_rank=2048
         qk_rope_head_dim=64
-        kv_lora_rank=160
+        kv_lora_rank=160 # if args.num_attn == 32 else 160
         v_head_dim=128
         qk_nope_head_dim=64
         use_full_kv_head=False
         mla_layers=[i for i in range(args.num_attn)]
+        if args.num_attn == 8:
+            mla_layers=[0,4,8,12,16,20,25,30]
+        if args.num_attn == 16:
+            mla_layers=[0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30]
     elif args.model_name == '70B':
         pretrained_path = 'meta-llama/Llama-3.1-70B-Instruct'
         hidden_size = 8192
@@ -166,11 +171,9 @@ def main(args):
             max_position_embeddings=131072,
             rope_theta=500000.0,
             rope_scaling={
-                "factor": 32.0,
-                "high_freq_factor": 4.0,
-                "low_freq_factor": 1.0,
-                "original_max_position_embeddings": 8192,
-                "rope_type": "llama3"
+                "factor": 1.0,
+                "original_max_position_embeddings": 2048,
+                "rope_type": "yarn"
             },
             rope_type="yarn",
             d_model=hidden_size,
@@ -206,14 +209,18 @@ def main(args):
             input_ids=static_input_ids,
             max_length=max_length,
             cg=True,
+            cg_piecewise=True,
+            profile=False,
             return_dict_in_generate=False,
             output_scores=False,
+            random_context=True,
+            enable_timing=True,
             eos_token_id=tokenizer.eos_token_id,
         )
 
-
-    warmup(_gen_step)
-    measure_inference_speed_and_memory(static_input_ids, _gen_step, args.repeats)
+    compiled_function  = torch.compile(_gen_step, mode="default") 
+    warmup(compiled_function)
+    measure_inference_speed_and_memory(static_input_ids, compiled_function, args.repeats)
 
 
 if __name__ == "__main__":

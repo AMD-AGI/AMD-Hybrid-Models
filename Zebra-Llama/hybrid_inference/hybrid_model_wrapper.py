@@ -13,8 +13,8 @@ from transformers.utils import WEIGHTS_NAME, CONFIG_NAME
 from transformers.utils.hub import cached_file
 
 from hybrid_inference.mla.hybrid_model import MLADecoderLayer
-from hybrid.mamba2.hybrid_model import Mamba2DecoderLayer
-from mamba_ssm.utils.generation import GenerationMixin
+from hybrid_inference.mamba2.hybrid_model import Mamba2DecoderLayer
+from hybrid_inference.generation import GenerationMixin
 from hybrid.hybrid_config import HybridConfig
 from collections import namedtuple
 
@@ -42,7 +42,7 @@ def load_state_dict_hf(model_name, device=None, dtype=None):
 
 class HybridModelWrapper(nn.Module, GenerationMixin):
 
-    def __init__(self, checkpoint_path, transformer_model, hybrid_config, mla_layers, dtype, absorb=False, load_from_hub=False, **kwargs):
+    def __init__(self, checkpoint_path, transformer_model, hybrid_config, mla_layers, dtype, absorb=True, load_from_hub=False, **kwargs):
         super(HybridModelWrapper, self).__init__()
                 
         self.hybrid_config = hybrid_config
@@ -62,7 +62,7 @@ class HybridModelWrapper(nn.Module, GenerationMixin):
                 MLA_encoder = MLADecoderLayer(
                     hybrid_config,
                     layer_idx,
-                    absorb=absorb,
+                    absorb=True,
                     device="cuda",
                     dtype=dtype,
                 )
@@ -94,6 +94,9 @@ class HybridModelWrapper(nn.Module, GenerationMixin):
                     # support save from safetensors                    
                     self.model.load_state_dict(load_safetensors_to_dict(checkpoint_path), strict=False)
         
+        for layer_idx in range(hybrid_config.n_layer):
+            if layer_idx in mla_layers:
+                self.model.model.layers[layer_idx]._init_merge()
         self.model = self.model.to(dtype).cuda()
 
 
@@ -102,25 +105,346 @@ class HybridModelWrapper(nn.Module, GenerationMixin):
             i: layer.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
             for i, layer in enumerate(self.model.model.layers)
         }
+    
+    def graph_block(self, inference_params):
+        
+        functions = []
+        for idx, l in enumerate(self.mla_layers):
+            if idx == 0:
+                setattr(self, f"input_{idx}", torch.randint(0, 100, (inference_params.max_batch_size, 1), device="cuda", dtype=torch.long))
+                def block(input_ids, inference_params):                    
+                    hidden_states = self.model.model.embed_tokens(input_ids)
+                    for i in range(self.mla_layers[0]):
+                        hidden_states = self.model.model.layers[i](hidden_states, inference_params=inference_params)
+                    return self.model.model.layers[self.mla_layers[0]].forward_static_1(hidden_states, inference_params=inference_params)
+                functions.append(block)
+            else:
+                setattr(self, f"input_{idx}", torch.randn((inference_params.max_batch_size, self.hybrid_config.num_attention_heads, 1, self.hybrid_config.kv_lora_rank), device="cuda", dtype=self.dtype))
+                setattr(self, f"residual_{idx}", torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.hidden_size), device="cuda", dtype=self.dtype))
+                def block(hidden_states, residual, idx, inference_params):
+                    hidden_states = self.model.model.layers[self.mla_layers[idx-1]].forward_static_2(hidden_states, residual)
+                    for i in range(self.mla_layers[idx-1]+1, self.mla_layers[idx]):
+                        hidden_states = self.model.model.layers[i](hidden_states, inference_params=inference_params)
+                    return self.model.model.layers[self.mla_layers[idx]].forward_static_1(hidden_states, inference_params=inference_params)
+                functions.append(block)
+        
+        setattr(self, f"input_{len(self.mla_layers)}", torch.randn((inference_params.max_batch_size, self.hybrid_config.num_attention_heads, 1, self.hybrid_config.kv_lora_rank), device="cuda", dtype=self.dtype))
+        setattr(self, f"residual_{len(self.mla_layers)}", torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.hidden_size), device="cuda", dtype=self.dtype))
+
+        def block(hidden_states, residual, inference_params):
+            hidden_states = self.model.model.layers[self.mla_layers[-1]].forward_static_2(hidden_states, residual)
+            for i in range(self.mla_layers[-1]+1, self.hybrid_config.n_layer):
+                hidden_states = self.model.model.layers[i](hidden_states, inference_params=inference_params)
+            hidden_states = self.model.model.norm(hidden_states)
+            lm_logits = self.model.lm_head(hidden_states)
+            CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
+            return CausalLMOutput(logits=lm_logits)
+        functions.append(block)
+ 
+        return functions
+
+
+    def capture_graph(self, inference_params, **kwargs):
+        # for i, layer in enumerate(self.model.model.layers):
+        #     layer.capture_graph(inference_params)
+        # self.hybrid_config.n_layer
+        # count = 0
+        # for idx, l in enumerate(self.mla_layers):
+        #     if idx == 0:
+        #         setattr(self, f"input_{idx}", torch.randn(inference_params.max_batch_size, 1))
+        self.static_functions = self.graph_block(inference_params)
+
+        self.graphed_segments = []
+        for idx, l in enumerate(self.mla_layers):
+            if idx == 0:
+                static_inputs = {
+                    'input_ids': torch.randint(0, 100, (inference_params.max_batch_size, 1), device="cuda", dtype=torch.long)
+                }
+                # Output placeholder (tuple to match the return of DummyLayer)
+                static_outputs = {
+                    # 'q_nope': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.num_attention_heads, self.hybrid_config.qk_nope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'q_pe': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.num_attention_heads, self.hybrid_config.qk_rope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'k_pe': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.num_attention_heads, self.hybrid_config.qk_rope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'cos': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.num_attention_heads, self.hybrid_config.qk_rope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'sin': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.num_attention_heads, self.hybrid_config.qk_rope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'compressed_kv_comb': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.kv_lora_rank+self.hybrid_config.qk_rope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'residual': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.hidden_size), device="cuda", dtype=self.dtype),
+                }
+                
+                # q_nope, q_pe, k_pe, cos, sin, compressed_kv
+
+                def _segment_forward_pass_graphed():
+                    hidden_states = self.model.model.embed_tokens(static_inputs['input_ids'])
+                    for i in range(self.mla_layers[0]):
+                        hidden_states = self.model.model.layers[i](hidden_states, inference_params=inference_params)
+                    (
+                        static_outputs['q_nope'], 
+                        static_outputs['q_pe'], 
+                        static_outputs['k_pe'], 
+                        static_outputs['cos'], 
+                        static_outputs['sin'], 
+                        static_outputs['compressed_kv_comb'], 
+                        static_outputs['residual']
+                    ) = self.model.model.layers[self.mla_layers[0]].forward_static_1(hidden_states, inference_params=inference_params)
+                    # static_outputs['q_nope'].copy_(q_nope)
+                    # static_outputs['q_pe'].copy_(q_pe)
+                    # static_outputs['compressed_kv_comb'].copy_(compressed_kv_comb)
+                    # static_outputs['residual'].copy_(residual)
+                
+                s = torch.cuda.Stream()    
+                s.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(s):
+                    for _ in range(2):
+                        _segment_forward_pass_graphed()
+                s.synchronize()
+
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                
+                torch.cuda.current_stream().wait_stream(s)
+
+                segment_graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(segment_graph, pool=torch.cuda.graphs.graph_pool_handle()):
+                    _segment_forward_pass_graphed()
+                
+                self.graphed_segments.append({
+                    "graph": segment_graph,
+                    "static_inputs": static_inputs,
+                    "static_outputs": static_outputs,
+                })
+            else:
+                static_inputs = {
+                    'x': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.num_attention_heads, self.hybrid_config.kv_lora_rank), device="cuda", dtype=self.dtype),
+                    'residual': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.hidden_size), device="cuda", dtype=self.dtype),
+                }
+                # Output placeholder (tuple to match the return of DummyLayer)
+                static_outputs = {
+                    # 'q_nope': torch.randn((inference_params.max_batch_size, self.hybrid_config.num_attention_heads, 1, self.hybrid_config.qk_nope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'q_pe': torch.randn((inference_params.max_batch_size, self.hybrid_config.num_attention_heads, 1, self.hybrid_config.qk_rope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'compressed_kv_comb': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.kv_lora_rank+self.hybrid_config.qk_rope_head_dim), device="cuda", dtype=self.dtype),
+                    # 'residual': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.hidden_size), device="cuda", dtype=self.dtype),
+                }
+                def _segment_forward_pass_graphed():
+                    x = static_inputs['x']
+                    hidden_states = self.model.model.layers[self.mla_layers[idx-1]].forward_static_2(static_inputs['x'], static_inputs['residual'])
+
+                    for i in range(self.mla_layers[idx-1]+1, self.mla_layers[idx]):
+                        hidden_states = self.model.model.layers[i](hidden_states, inference_params=inference_params)
+                    (
+                        static_outputs['q_nope'], 
+                        static_outputs['q_pe'], 
+                        static_outputs['k_pe'], 
+                        static_outputs['cos'], 
+                        static_outputs['sin'], 
+                        static_outputs['compressed_kv_comb'], 
+                        static_outputs['residual']
+                    ) = self.model.model.layers[self.mla_layers[idx]].forward_static_1(hidden_states, inference_params=inference_params)
+                    # static_outputs['q_nope'].copy_(q_nope)
+                    # static_outputs['q_pe'].copy_(q_pe)
+                    # static_outputs['compressed_kv_comb'].copy_(compressed_kv_comb)
+                    # static_outputs['residual'].copy_(residual)
+                
+                s = torch.cuda.Stream()    
+                s.wait_stream(torch.cuda.current_stream())
+                with torch.cuda.stream(s):
+                    for _ in range(2):
+                        _segment_forward_pass_graphed()
+                s.synchronize()
+
+                if torch.distributed.is_initialized():
+                    torch.distributed.barrier()
+                
+                torch.cuda.current_stream().wait_stream(s)
+
+                segment_graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(segment_graph, pool=torch.cuda.graphs.graph_pool_handle()):
+                    _segment_forward_pass_graphed()
+                
+                self.graphed_segments.append({
+                    "graph": segment_graph,
+                    "static_inputs": static_inputs,
+                    "static_outputs": static_outputs,
+                })
+        
+        static_inputs = {
+            'x': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.num_attention_heads, self.hybrid_config.kv_lora_rank), device="cuda", dtype=self.dtype),
+            'residual': torch.randn((inference_params.max_batch_size, 1, self.hybrid_config.hidden_size), device="cuda", dtype=self.dtype),
+        }
+        # Output placeholder (tuple to match the return of DummyLayer)
+        static_outputs = {
+        }
+        def _segment_forward_pass_graphed():
+            hidden_states = self.model.model.layers[self.mla_layers[-1]].forward_static_2(static_inputs['x'], static_inputs['residual'])
+            for i in range(self.mla_layers[-1]+1, self.hybrid_config.n_layer):
+                hidden_states = self.model.model.layers[i](hidden_states, inference_params=inference_params)
+            hidden_states = self.model.model.norm(hidden_states)
+            lm_logits = self.model.lm_head(hidden_states)
+            CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
+            static_outputs['outputs_logits'] = CausalLMOutput(logits=lm_logits)
+        
+        s = torch.cuda.Stream()    
+        s.wait_stream(torch.cuda.current_stream())
+        with torch.cuda.stream(s):
+            for _ in range(2):
+                _segment_forward_pass_graphed()
+        s.synchronize()
+
+        if torch.distributed.is_initialized():
+            torch.distributed.barrier()
+        
+        torch.cuda.current_stream().wait_stream(s)
+
+        segment_graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(segment_graph, pool=torch.cuda.graphs.graph_pool_handle()):
+            _segment_forward_pass_graphed()
+        
+        self.graphed_segments.append({
+            "graph": segment_graph,
+            "static_inputs": static_inputs,
+            "static_outputs": static_outputs,
+        })
+
+
+
+        # self.input_0 = torch.randint(0, 100, (inference_params.max_batch_size, 1), device="cuda", dtype=torch.long)
+
+
+        # s = torch.cuda.Stream()
+        # s.wait_stream(torch.cuda.current_stream())
+        # with torch.cuda.stream(s):
+        #     for _ in range(2):
+        #         self.q_nope, self.q_pe, self.compressed_kv_comb, self.residual_1 = self.static_functions[0](self.input_0, inference_params)
+        # s.synchronize()
+
+        # if torch.distributed.is_initialized():
+        #     torch.distributed.barrier()
+        
+        # torch.cuda.current_stream().wait_stream(s)
+        # graph = torch.cuda.CUDAGraph()
+        # with torch.cuda.graph(graph, pool=torch.cuda.graphs.graph_pool_handle()):
+        #     self.q_nope, self.q_pe, self.compressed_kv_comb, self.residual_1 = self.static_functions[0](self.input_0, inference_params)
+        # self.graph = graph
+
+        # for idx, func in enumerate(self.static_functions):
+        #     if idx >= 2:
+        #         break
+        #     # Captures the graph
+        #     # To allow capture, automatically sets a side stream as the current stream in the context
+        #     if idx == len(self.static_functions)-1:
+        #         s = torch.cuda.Stream()
+        #         s.wait_stream(torch.cuda.current_stream())
+        #         with torch.cuda.stream(s):
+        #             for _ in range(2):
+        #                 self.outputs_logits = func(self.input_1, self.residual_1, inference_params)
+        #         s.synchronize()
+        #         if torch.distributed.is_initialized():
+        #             torch.distributed.barrier()
+        #         torch.cuda.current_stream().wait_stream(s)
+        #         graph = torch.cuda.CUDAGraph()
+        #         with torch.cuda.graph(graph, pool=torch.cuda.graphs.graph_pool_handle()):
+        #             self.outputs_logits = func(self.input_1, self.residual_1, inference_params)
+        #         self.graph.append(graph) 
+        #     elif idx == 0: 
+        #         s = torch.cuda.Stream()
+        #         s.wait_stream(torch.cuda.current_stream())
+        #         with torch.cuda.stream(s): 
+        #             for _ in range(2):
+        #                 self.q_nope, self.q_pe, self.compressed_kv_comb, self.residual_1 = func(self.input_0, inference_params)
+        #         s.synchronize()
+        #         if torch.distributed.is_initialized():
+        #             torch.distributed.barrier() 
+        #         torch.cuda.current_stream().wait_stream(s)             
+        #         graph0 = torch.cuda.CUDAGraph()
+        #         with torch.cuda.graph(graph0, pool=torch.cuda.graphs.graph_pool_handle()):
+        #             self.q_nope, self.q_pe, self.compressed_kv_comb, self.residual_1 = func(self.input_0, inference_params)
+        #         self.graph.append(graph0)
+        #     else:
+        #         s = torch.cuda.Stream()
+        #         s.wait_stream(torch.cuda.current_stream())
+        #         for _ in range(2):
+        #             self.q_nope1, self.q_pe1, self.compressed_kv_comb1, self.residual_2 = func(self.input_1, self.residual_1, self.idx, inference_params)
+        #         s.synchronize()
+        #         if torch.distributed.is_initialized():
+        #             torch.distributed.barrier() 
+        #         torch.cuda.current_stream().wait_stream(s)
+        #         graph1 = torch.cuda.CUDAGraph()
+        #         with torch.cuda.graph(graph1, pool=torch.cuda.graphs.graph_pool_handle()):
+        #             self.q_nope1, self.q_pe1, self.compressed_kv_comb1, self.residual_2 = func(self.input_1, self.residual_1, self.idx, inference_params)
+        #         self.graph1 = graph1
+        #         self.graph.append(graph1)
+
+
+    
+    def forward_graph(self, input_ids, position_ids=None, inference_params=None, num_last_tokens=0, **mixer_kwargs): 
+                
+        # hidden_states = self.model.model.embed_tokens(input_ids)
+        # for decoder_layer in self.model.model.layers:
+        #     hidden_states = decoder_layer.forward_graph(hidden_states, inference_params=inference_params, position_ids=position_ids)
+        #     # hidden_states = hidden_states[0]
+        # hidden_states = self.model.model.norm(hidden_states)
+        # if num_last_tokens > 0:
+        #     hidden_states = hidden_states[:, -num_last_tokens:]
+        # lm_logits = self.model.lm_head(hidden_states)
+        # CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
+        # return CausalLMOutput(logits=lm_logits)
+        
+
+        for idx, segment in enumerate(self.graphed_segments):
+            if idx == 0:
+                segment["static_inputs"]['input_ids'].copy_(input_ids)
+                segment["graph"].replay()
+                residual = segment['static_outputs']['residual'].clone()  
+                x = self.model.model.layers[self.mla_layers[idx]].mla.forward_dynamic(
+                    segment['static_outputs']['q_nope'], 
+                    segment['static_outputs']['q_pe'], 
+                    segment['static_outputs']['k_pe'], 
+                    segment['static_outputs']['cos'], 
+                    segment['static_outputs']['sin'],
+                    segment['static_outputs']['compressed_kv_comb'], inference_params=inference_params)
+                # q_nope, q_pe, compressed_kv_comb, residual = self.static_functions[idx](input_ids, inference_params=inference_params)         
+                # x = self.model.model.layers[self.mla_layers[idx]].mla.forward_dynamic(q_nope, q_pe, compressed_kv_comb, inference_params=inference_params)
+            elif idx == len(self.graphed_segments)-1:
+                segment["static_inputs"]['x'].copy_(x)
+                segment["static_inputs"]['residual'].copy_(residual)
+                segment["graph"].replay()
+                return segment["static_outputs"]['outputs_logits']
+                # outputs_logits = self.static_functions[idx](x, residual, inference_params=inference_params)
+                # return outputs_logits
+            else:
+                segment["static_inputs"]['x'].copy_(x)
+                segment["static_inputs"]['residual'].copy_(residual)
+                segment["graph"].replay()
+                residual = segment['static_outputs']['residual'].clone() 
+                x = self.model.model.layers[self.mla_layers[idx]].mla.forward_dynamic(
+                    segment['static_outputs']['q_nope'], 
+                    segment['static_outputs']['q_pe'], 
+                    segment['static_outputs']['k_pe'], 
+                    segment['static_outputs']['cos'], 
+                    segment['static_outputs']['sin'],
+                    segment['static_outputs']['compressed_kv_comb'], inference_params=inference_params)
+                # q_nope, q_pe, k_pe, cos, sin, compressed_kv_comb, residual = self.static_functions[idx](x, residual, idx, inference_params=inference_params)
+                # x = self.model.model.layers[self.mla_layers[idx]].mla.forward_dynamic(q_nope, q_pe, k_pe, cos, sin, compressed_kv_comb, inference_params=inference_params)
+
 
     def forward(self, input_ids, position_ids=None, inference_params=None, num_last_tokens=0, **mixer_kwargs):
         """
         "position_ids" is just to be compatible with Transformer generation. We don't use it.
         num_last_tokens: if > 0, only return the logits for the last n tokens
         """
-        
         # print(input_ids.shape)
         # print(f"offset: {inference_params.seqlen_offset}")
-        hidden_states = self.model.model.embed_tokens(input_ids, **mixer_kwargs)
+        hidden_states = self.model.model.embed_tokens(input_ids)
         for decoder_layer in self.model.model.layers:
-            hidden_states = decoder_layer(hidden_states, inference_params=inference_params, **mixer_kwargs)
-            hidden_states = hidden_states[0]
+            hidden_states = decoder_layer(hidden_states, inference_params=inference_params, position_ids=position_ids,)
+            # hidden_states = hidden_states[0]
         hidden_states = self.model.model.norm(hidden_states)
         if num_last_tokens > 0:
             hidden_states = hidden_states[:, -num_last_tokens:]
         lm_logits = self.model.lm_head(hidden_states)
         CausalLMOutput = namedtuple("CausalLMOutput", ["logits"])
         return CausalLMOutput(logits=lm_logits)
+        
+
 
     @staticmethod
     def from_pretrained_local(pretrained_model_name, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", absorb=False):
@@ -175,8 +499,10 @@ class HybridModelWrapper(nn.Module, GenerationMixin):
             do_sample = kwargs.pop('do_sample', True)
             if not do_sample:
                 top_k, top_p, min_p = 1, 0.0, 0.0
-            cg = kwargs.pop('cg', False)
-
+            cg = kwargs.pop('cg', True)
+            cg_piecewise = kwargs.pop('cg_piecewise', True)
+            profile = kwargs.pop('profile', False)
+            random_context = kwargs.pop('random_context', False)
             eos_token_id = kwargs.pop('eos_token_id', None)
             if eos_token_id is None:
                 eos_token_id = self.config.eos_token_id
@@ -194,6 +520,9 @@ class HybridModelWrapper(nn.Module, GenerationMixin):
             input_ids=input_ids,
             max_length=max_length,
             cg=cg,
+            cg_piecewise=cg_piecewise,
+            profile=profile,
+            random_context=random_context,
             top_k=top_k,
             top_p=top_p,
             min_p=min_p,
