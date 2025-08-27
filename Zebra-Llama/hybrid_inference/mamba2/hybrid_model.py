@@ -3,7 +3,8 @@ from torch import Tensor
 from transformers.activations import ACT2FN
 
 # from mla.hybrid_mla_config import MambaConfig
-from hybrid.mamba2.hybrid_mamba2_layer import Mamba2
+# from hybrid.mamba2.hybrid_mamba2_layer import Mamba2
+from hybrid_inference.mamba2.hybrid_mamba_layer import Mamba2
 
 import torch
 import torch.nn as nn
@@ -145,4 +146,5 @@ class Mamba2DecoderLayer(nn.Module):
         #     if use_cache:
         #         outputs += (past_key_value,)
                 
+
         #     return outputs
