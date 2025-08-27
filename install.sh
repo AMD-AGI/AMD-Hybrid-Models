@@ -65,6 +65,7 @@ fi
 
 if [ "$FLASH_ATTN" -eq 1 ]; then
     pip uninstall flash_attn -y
+    rm -rf flash-attention
     git clone https://github.com/Dao-AILab/flash-attention.git
     cd flash-attention/
     MAX_JOBS=128 python setup.py install
