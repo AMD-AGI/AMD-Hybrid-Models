@@ -25,6 +25,7 @@ bf16: true
 do_eval: true
 ILD: true
 evaluation_strategy: epoch
+factor: 32.0
 gradient_accumulation_steps: 1
 gradient_checkpointing: false
 gradient_checkpointing_kwargs:
@@ -37,6 +38,7 @@ lr_scheduler_type: cosine
 max_seq_length: 2048
 max_steps: -1
 num_train_epochs: 1
+original_max_position_embeddings: 8192
 output_dir: checkpoints/Zebra-3B-ILD-MLA
 overwrite_output_dir: true
 per_device_eval_batch_size: 2

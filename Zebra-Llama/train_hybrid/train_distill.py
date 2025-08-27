@@ -251,7 +251,7 @@ def main():
             None, model_args.model_name_or_path, hybrid_config, mla_layers=mla_layers, init_with_svd=training_args.init_with_svd, 
             init_with_kqvo=training_args.init_with_kqvo, mamba_model_path=training_args.mamba_ILD_path, mla_model_path=training_args.mla_ILD_path, attn_implementation=attn_implementation)
     else:
-        model = MLATransformerHybridModelWrapper.from_pretrained(model_args.model_name_or_path, attn_implementation=attn_implementation)
+        model = HybridModelWrapper.from_pretrained(model_args.model_name_or_path, attn_implementation=attn_implementation)
     
     print("#Params:", sum(p.numel() for p in model.parameters() if p.requires_grad))
 

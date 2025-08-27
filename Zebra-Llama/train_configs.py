@@ -22,17 +22,13 @@ class SFTDistillConfig(SFTConfig):
         default=False,
         metadata={"help": "Whether we are performing intermediate layer distillation"},
     )
-    prev_checkpoint_path: Optional[str] = field(
-        default=None,
-        metadata={"help": "Path to the previous distilled model in this progressive distillation."},
-    )
     mamba_ILD_path: str = field(
         default=None,
-        metadata={"help": "Path to the pure Mamba model after ILD."},
+        metadata={"help": "Path to the Mamba layers after ILD."},
     )
     mla_ILD_path: str = field(
         default=None,
-        metadata={"help": "Path to the pure MLA model after ILD."},
+        metadata={"help": "Path to the MLA layers after ILD."},
     )
     mla_layers: List[int] = field(
         default=None,
@@ -120,7 +116,7 @@ class SFTDistillConfig(SFTConfig):
     )
     original_max_position_embeddings: int = field(
         default=2048,
-        metadata={"help": "Indicates the portion of training data."},
+        metadata={"help": "Define the original max positional embeddings"},
     )
 
 # Copy from HuggingFace H4ArgumentParser

@@ -1,30 +1,62 @@
 import torch
-from transformers import AutoTokenizer
+from transformers import AutoTokenizer, GenerationConfig
 from hybrid.hybrid_wrapper import HybridModelWrapper
 
-checkpoint_path = "/home/mnt/mingyyan/checkpoints/hybrid_QWEN_7B_7B_mla_8_mamba20_Fix96_qr1536_qh64_stage2-dpo"
-# checkpoint_path = "amd/Zebra-Llama-8B-16MLA-16Mamba-DPO" 
-
-model = HybridModelWrapper.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16).cuda()
-tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
-model.eval()
-
-
-prompt = [{"role": "user", "content": "What are the advantages of hybrid language models"}]
-input_ids = tokenizer.apply_chat_template(
-    prompt,
-    add_generation_prompt=True,
-    return_tensors='pt'
-).cuda()
-
-# Generate input prompts
-with torch.no_grad():
-    output = model.generate(
-            input_ids, 
-            max_new_tokens=256,
-            temperature=0.7,
-            do_sample=True,
-            eos_token_id=tokenizer.eos_token_id)
+def main():
+    """
+    Main function to load a hybrid language model, generate a response, and print it.
+    """
+    # 1. Configuration 
+    # Define model and tokenizer path, and generation parameters for easy modification.
+    checkpoint_path = "amd/Zebra-Llama-3B-6MLA-22Mamba-SFT"
+    max_new_tokens = 256
+    temperature = 0.7
     
-print(tokenizer.decode(output[0], skip_special_tokens=False))
+    try:
+        # 2. Model and Tokenizer Loading 
+        print("Loading model and tokenizer...")
+        # Use a more robust loading method with .from_pretrained.
+        model = HybridModelWrapper.from_pretrained(
+            checkpoint_path,
+            torch_dtype=torch.bfloat16,
+        ).cuda()
+        tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
+        model.eval()
+
+        # 3. Prepare Input
+        prompt = [{"role": "user", "content": "What are the advantages of hybrid language models"}]
+        input_ids = tokenizer.apply_chat_template(
+            prompt,
+            add_generation_prompt=True,
+            return_tensors='pt'
+        ).cuda()
+
+        # 4. Model Generation 
+        print("Generating response...")
+        # Use GenerationConfig for cleaner parameter management.
+        generation_config = GenerationConfig(
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            do_sample=True,
+            eos_token_id=tokenizer.eos_token_id
+        )
+        
+        with torch.no_grad():
+            output = model.generate(
+                input_ids,
+                generation_config=generation_config
+            )
+
+        # 5. Decode and Print Output
+        # Decode only the newly generated tokens to avoid repeating the prompt.
+        decoded_output = tokenizer.decode(output[0, input_ids.shape[1]:], skip_special_tokens=True)
+        print("\n--- Model Response ---")
+        print(decoded_output)
+        print("----------------------")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+if __name__ == "__main__":
+    main()
 
