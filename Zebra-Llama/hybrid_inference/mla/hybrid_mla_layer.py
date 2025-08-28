@@ -10,7 +10,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -61,9 +61,9 @@ import numpy as np
 from einops import rearrange
 
 from hybrid.mla.hybrid_mla_layer import (
-    DeepseekV3RMSNorm, 
-    DeepseekV3RotaryEmbedding, 
-    DeepseekV3LinearScalingRotaryEmbedding, 
+    DeepseekV3RMSNorm,
+    DeepseekV3RotaryEmbedding,
+    DeepseekV3LinearScalingRotaryEmbedding,
     DeepseekV3YarnRotaryEmbedding,
     DeepseekV3DynamicNTKScalingRotaryEmbedding,
     DeepseekV3YarnRotaryEmbedding
@@ -72,8 +72,7 @@ from huggingface_hub import PyTorchModelHubMixin
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_func, flash_attn_varlen_func
-    from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input  # noqa
-
+    from flash_attn.bert_padding import index_first_axis, pad_input, unpad_input   # noqa
 
 # This makes `_prepare_4d_causal_attention_mask` a leaf function in the FX graph.
 # It means that the function will not be traced through and simply appear as a node in the graph.
@@ -82,7 +81,6 @@ if is_torch_fx_available():
         import torch.fx
 
     _prepare_4d_causal_attention_mask = torch.fx.wrap(_prepare_4d_causal_attention_mask)
-
 
 logger = logging.get_logger(__name__)
 
@@ -106,7 +104,6 @@ ALL_LAYERNORM_LAYERS.append(DeepseekV3RMSNorm)
 def _update_kv_cache(kv, inference_params, layer_idx):
     """kv: (batch_size, seqlen, head_dim) or (batch_size, 1, head_dim)"""
     # Pre-allocate memory for key-values for inference.
-    head_dim = kv.shape[-1]
     assert layer_idx in inference_params.key_value_memory_dict
     kv_cache, _ = inference_params.key_value_memory_dict[layer_idx]
     # Adjust key and value for inference
@@ -130,38 +127,23 @@ def rotate_half(x):
 
 # Copied from transformers.models.llama.modeling_llama.apply_rotary_pos_emb
 def apply_rotary_pos_emb(q, k, cos, sin, position_ids, unsqueeze_dim=1):
-    """Applies Rotary Position Embedding to the query and key tensors.
-    Args:
-        q (`torch.Tensor`): The query tensor.
-        k (`torch.Tensor`): The key tensor.
-        cos (`torch.Tensor`): The cosine part of the rotary embedding.
-        sin (`torch.Tensor`): The sine part of the rotary embedding.
-        position_ids (`torch.Tensor`):
-            The position indices of the tokens corresponding to the query and key tensors. For example, this can be
-            used to pass offsetted position ids when working with a KV-cache.
-        unsqueeze_dim (`int`, *optional*, defaults to 1):
-            The 'unsqueeze_dim' argument specifies the dimension along which to unsqueeze cos[position_ids] and
-            sin[position_ids] so that they can be properly broadcasted to the dimensions of q and k. For example, note
-            that cos[position_ids] and sin[position_ids] have the shape [batch_size, seq_len, head_dim]. Then, if q and
-            k have the shape [batch_size, heads, seq_len, head_dim], then setting unsqueeze_dim=1 makes
-            cos[position_ids] and sin[position_ids] broadcastable to the shapes of q and k. Similarly, if q and k have
-            the shape [batch_size, seq_len, heads, head_dim], then set unsqueeze_dim=2.
-    Returns:
-        `tuple(torch.Tensor)` comprising of the query and key tensors rotated using the Rotary Position Embedding.
-    """
-    if position_ids is not None:
-        cos = cos[position_ids[0]:position_ids[1], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
-        sin = sin[position_ids[0]:position_ids[1], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
-    else:
-        cos = cos[:q.shape[2], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
-        sin = sin[:q.shape[2], :].unsqueeze(0).unsqueeze(unsqueeze_dim)
+    """Applies Rotary Position Embedding to the query and key tensors."""
 
+    if position_ids is not None:
+        cos = cos[position_ids:position_ids+1].unsqueeze(0).unsqueeze(unsqueeze_dim)
+        sin = sin[position_ids:position_ids+1].unsqueeze(0).unsqueeze(unsqueeze_dim)
+    else:
+        # If position_ids are not provided, we use the default positions
+        seq_len = q.shape[-2]
+        cos = cos[:seq_len].unsqueeze(0).unsqueeze(unsqueeze_dim)
+        sin = sin[:seq_len].unsqueeze(0).unsqueeze(unsqueeze_dim)
+    
     b, h, s, d = q.shape
     q = q.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
 
     b, h, s, d = k.shape
     k = k.view(b, h, s, d // 2, 2).transpose(4, 3).reshape(b, h, s, d)
-    
+
     q_embed = (q * cos) + (rotate_half(q) * sin)
     k_embed = (k * cos) + (rotate_half(k) * sin)
     return q_embed, k_embed
@@ -198,10 +180,6 @@ class DeepseekV3FlashAttention2(nn.Module):
                 "when creating this class."
             )
 
-        if str(layer_idx) in config.layer_rank_list:
-            config.kv_lora_rank = config.layer_rank_list[str(layer_idx)]["kv_rank"]
-            config.q_lora_rank =  config.layer_rank_list[str(layer_idx)]["q_rank"]
-
         self.attention_dropout = config.attention_dropout
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -218,8 +196,6 @@ class DeepseekV3FlashAttention2(nn.Module):
         self.q_head_dim = config.qk_nope_head_dim + config.qk_rope_head_dim
         self.use_lora_layer_norm = config.use_lora_layer_norm
         self.attention_bias = config.attention_bias
-        self.q_energy_ratio = config.q_energy_ratio
-        self.kv_energy_ratio = config.kv_energy_ratio
         self.is_causal = True
 
         if self.q_lora_rank is None:
@@ -263,6 +239,12 @@ class DeepseekV3FlashAttention2(nn.Module):
             if mscale_all_dim:
                 mscale = yarn_get_mscale(scaling_factor, mscale_all_dim)
                 self.softmax_scale = self.softmax_scale * mscale * mscale
+    
+    def _init_merge(self):
+        wkv_b = self.kv_b_proj.weight.view(self.num_kv_heads, self.qk_nope_head_dim+self.v_head_dim, -1)
+        wkv_b = torch.repeat_interleave(wkv_b, repeats=self.num_heads//self.num_kv_heads, dim=0)
+        self.register_buffer("wk_b", wkv_b[:, :self.qk_nope_head_dim, :], persistent=True)
+        self.register_buffer("wv_b", wkv_b[:, self.qk_nope_head_dim:, :], persistent=True)
 
     def _init_rope(self):
         if self.config.rope_scaling is None:
@@ -272,8 +254,7 @@ class DeepseekV3FlashAttention2(nn.Module):
                 base=self.rope_theta,
             )
         else:
-            rope_type = self.config.rope_type
-            self.rope_type = rope_type
+            rope_type = self.config.rope_scaling["rope_type"]
             scaling_factor = self.config.rope_scaling["factor"]
             if rope_type == "linear":
                 self.rotary_emb = DeepseekV3LinearScalingRotaryEmbedding(
@@ -324,7 +305,7 @@ class DeepseekV3FlashAttention2(nn.Module):
         dtype = self.kv_a_proj_with_mqa.weight.dtype if dtype is None else dtype
         device = self.kv_a_proj_with_mqa.weight.device
         conv_state = None
-        kv_cache = torch.zeros(
+        kv_cache = torch.randn(
             batch_size, max_seqlen, self.kv_lora_rank+self.qk_rope_head_dim, dtype=dtype, device=device,
         )
         return kv_cache, conv_state
@@ -389,9 +370,7 @@ class DeepseekV3FlashAttention2(nn.Module):
                 causal=self.is_causal,
             )
             return attn_output
-            
         else:
-            
             # MLA inference using Matrix Absorb
             # Step #1: update the kv-cache
             compressed_kv = self._update_kv_cache(compressed_kv, inference_params)
@@ -402,7 +381,7 @@ class DeepseekV3FlashAttention2(nn.Module):
                 compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
             )
             
-             # Separete the matrix kv_b_proj for matrix absorbing
+            # Separete the matrix kv_b_proj for matrix absorbing
             wkv_b = self.kv_b_proj.weight.view(self.num_kv_heads, self.qk_nope_head_dim+self.v_head_dim, -1)
             wkv_b = torch.repeat_interleave(wkv_b, repeats=self.num_heads//self.num_kv_heads, dim=0)
             wk_b = wkv_b[:, :self.qk_nope_head_dim, :]
@@ -417,11 +396,73 @@ class DeepseekV3FlashAttention2(nn.Module):
             return x
 
 
+    def forward_static_1( 
+            self, 
+            hidden_states: torch.Tensor,
+            inference_params=None,
+            **kwargs,):
+
+        x = hidden_states
+        bsz, _, _ = x.size()
+        
+        # Get queries
+        if self.q_lora_rank is None:
+            q = self.q_proj(x) 
+        else:
+            q = self.q_b_proj(self.q_a_layernorm(self.q_a_proj(x)))
+
+        q = q.view(bsz, 1, self.num_heads, self.q_head_dim)
+
+        # Divide it into q_nope and q_pe
+        q_nope, q_pe = torch.split(
+                q, [self.qk_nope_head_dim, self.qk_rope_head_dim], dim=-1
+            )
+        
+        # Get the compressed kv and kp
+        compressed_kv = self.kv_a_proj_with_mqa(x)
+        compressed_kv, k_pe = torch.split(
+            compressed_kv, [self.kv_lora_rank, self.qk_rope_head_dim], dim=-1
+        )
+        compressed_kv = self.kv_a_layernorm(compressed_kv)
+        k_pe = k_pe.view(bsz, 1, 1, self.qk_rope_head_dim)
+
+        # Apply rope to k_pe and p_pe
+        cos, sin = self.rotary_emb(k_pe, seq_len=inference_params.max_seqlen)
+        
+        return q_nope, q_pe, k_pe, cos, sin, compressed_kv
+
+
+    def forward_static_2(self, x):        
+        x = torch.einsum("bshc,hdc->bshd", x, self.wv_b)
+        context = rearrange(x, "... h d -> ... (h d)")
+        out = self.out_proj(context)
+        return out
+
+
+    def forward_dynamic(self, q_nope, q_pe, k_pe, cos, sin, compressed_kv, inference_params, position_ids=None):
+        # Apply positional embedding
+        q_pe, k_pe = apply_rotary_pos_emb(q_pe, k_pe, cos, sin, inference_params.seqlen_offset)
+        k_pe = k_pe.view(q_nope.shape[0], 1, self.qk_rope_head_dim)
+        compressed_kv_comb = torch.cat([compressed_kv, k_pe], dim=-1)
+
+        # Update kv cache
+        compressed_kv = self._update_kv_cache(compressed_kv_comb, inference_params)
+        
+        # MLA inference implementation
+        compressed_kv, k_pe = compressed_kv[..., :self.kv_lora_rank], compressed_kv[..., -self.qk_rope_head_dim:]
+
+        q_nope = torch.einsum("bshd,hdc->bshc", q_nope, self.wk_b)
+        scores = (torch.einsum("bshc,btc->bsht", q_nope, compressed_kv) +
+                          torch.einsum("bshr,btr->bsht", q_pe, k_pe)) * self.softmax_scale
+        scores = scores.softmax(dim=-1).type_as(q_nope)
+        x = torch.einsum("bsht,btc->bshc", scores, compressed_kv)
+        return x
 
     def forward(
             self, 
             hidden_states: torch.Tensor,
             inference_params=None,
+            position_ids=None,
             **kwargs,
             ):
         """
@@ -473,7 +514,8 @@ class DeepseekV3FlashAttention2(nn.Module):
 
         # Apply rope to k_pe and p_pe
         cos, sin = self.rotary_emb(k_pe, seq_len=inference_params.max_seqlen)
-        positions = [inference_params.seqlen_offset, inference_params.seqlen_offset+q_len]
+
+        positions = inference_params.seqlen_offset if position_ids is not None else None
         q_pe, k_pe = apply_rotary_pos_emb(q_pe, k_pe, cos, sin, positions)
 
         # Prepare the contents that need to be stored in the kv cache

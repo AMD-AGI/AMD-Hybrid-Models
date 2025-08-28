@@ -1,6 +1,6 @@
 import torch
 from transformers import AutoTokenizer, GenerationConfig
-from hybrid.hybrid_wrapper import HybridModelWrapper
+from hybrid_inference.hybrid_model_wrapper import HybridModelWrapper
 
 def main():
     """
@@ -8,8 +8,8 @@ def main():
     """
     # 1. Configuration 
     # Define model and tokenizer path, and generation parameters for easy modification.
-    checkpoint_path = "amd/Zebra-Llama-3B-6MLA-22Mamba-SFT"
-    max_new_tokens = 256
+    checkpoint_path = "amd/Zebra-1B8B-4MLA12M2-2k-rope"
+    max_new_tokens = 512
     temperature = 0.7
     
     try:
@@ -24,7 +24,7 @@ def main():
         model.eval()
 
         # 3. Prepare Input
-        prompt = [{"role": "user", "content": "What are the advantages of hybrid language models"}]
+        prompt = [{"role": "user", "content": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market? Lets think step by step"}]
         input_ids = tokenizer.apply_chat_template(
             prompt,
             add_generation_prompt=True,
@@ -33,18 +33,15 @@ def main():
 
         # 4. Model Generation 
         print("Generating response...")
-        # Use GenerationConfig for cleaner parameter management.
-        generation_config = GenerationConfig(
-            max_new_tokens=max_new_tokens,
-            temperature=temperature,
-            do_sample=True,
-            eos_token_id=tokenizer.eos_token_id
-        )
-        
         with torch.no_grad():
             output = model.generate(
                 input_ids,
-                generation_config=generation_config
+                max_length=input_ids.shape[1] + max_new_tokens,
+                cg=True,
+                return_dict_in_generate=False,
+                output_scores=False,
+                eos_token_id=tokenizer.eos_token_id,
+                enable_timing=True
             )
 
         # 5. Decode and Print Output
