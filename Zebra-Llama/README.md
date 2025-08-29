@@ -85,39 +85,9 @@ Choose the instructions based on your GPU hardware:
 **Note:** The `install.sh` script handles the installation of required Python packages and dependencies within the containerized environment.
 
 ## Pre-trained Checkpoints
-
 We released our model checkpoints in the [huggingface](https://huggingface.co/collections/amd/amd-hybrid-models-67be591b09a4524abf65bcee). 
 
-**Chat with the Model**
-
-```bash
-import torch
-from transformers import AutoTokenizer
-from hybrid.hybrid_wrapper import HybridModelWrapper
-
-checkpoint_path = "amd/Zebra-Llama-1B-4MLA-12Mamba-DPO"
-model = HybridModelWrapper.from_pretrained(checkpoint_path, torch_dtype=torch.bfloat16, absorb=True).cuda()
-tokenizer = AutoTokenizer.from_pretrained(checkpoint_path)
-model.eval()
-
-# Format the prompt using the chat template
-prompt = [{"role": "user", "content": "What are the benefits of hybrid language models?"}]
-input_ids = tokenizer.apply_chat_template(
-    prompt,
-    add_generation_prompt=True,
-    return_tensors='pt'
-).cuda()
-
-# Generate a response
-tokens = model.generate(
-    inputs.to(model.device),
-    max_new_tokens=256,
-    temperature=0.7,
-    do_sample=True
-)
-
-print(tokenizer.decode(tokens[0], skip_special_tokens=False))
-```
+We include an example of chatting with pre-trained models in `chat.py`
 
 
 ## Training
@@ -165,7 +135,7 @@ ACCELERATE_LOG_LEVEL=info accelerate launch --config_file configs/fsdp.yaml trai
 ```
 
 ### Configuration
-
+  * We include an example of training script in `train.sh`
   * Training hyperparameters, model paths, dataset details, model configurations (e.g., KV rank, quantization bits), and FSDP settings are controlled by `.yaml` configuration files (e.g., `configs/llama3.2_1B/zebra_4MLA12M2_8bt_SFT.yaml`, `configs/fsdp.yaml`).
   * Please inspect these files and modify them according to your specific needs (e.g., dataset paths, teacher/student model identifiers, compute resources).
 
@@ -181,22 +151,7 @@ python benchmark/llm_eval/lm_harness_eval.py \
  --num_fewshot 0 --device cuda --batch_size 16
 ```
 
-Besides, we provide a script to perform batched evaluation for the trained hybrid models
-
-1.  **Update Checkpoint Path:** Modify the `eval.sh` script to point to the directory containing your final model checkpoint (saved after the DPO stage).
-    ```bash
-    # Example modification within eval.sh
-    ckpts=(
-      "PATH_TO_YOUR_CKPT1"
-      "PATH_TO_YOUR_CKPT2"
-    )
-    # ... rest of the script
-    ```
-2.  **Run Evaluation Script:** Execute the script from the root of the repository.
-    ```bash
-    bash eval.sh
-    ```
-    This script will typically run the model on standard benchmark datasets and report relevant metrics (e.g., perplexity, task-specific accuracy, memory usage). Check the script for details on the specific evaluation tasks performed.
+We provide an example script in `eval_lm_harness.sh`
 
 ## Results
 
