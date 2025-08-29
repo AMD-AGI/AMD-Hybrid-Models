@@ -13,33 +13,6 @@ Large Language Models (LLMs) often face major memory bottlenecks due to large ke
 | `zebra-llama/`   | Implements **Zebra-Llama**: a family of hybrid MLA + Mamba2 models with minimal retraining and maximum efficiency. |
 
 
- 
-
-## 🧪 Quick Start
-
-```bash
-git clone 
-cd efficient-hybrids
-conda env create -f env.yml
-conda activate hybrids
-```
-
-## Repository Structure
-```
-.
-├── env.yml              # Conda env for PyTorch, ROCm, and Hugging Face
-├── x-eco-mla/           # Codebase for X-EcoMLA
-│   ├── README.md
-│   ├── scripts/
-│   └── configs/
-└── zebra-llama/         # Codebase for Zebra-Llama
-    ├── README.md
-    ├── scripts/
-    └── configs/
-```
-
- 
-
 ## Citation
 If you find this repository useful in your research or application, please cite our paper:
 
