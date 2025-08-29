@@ -61,7 +61,6 @@ class HybridModelWrapper(nn.Module):
         self.model = transformer_model
         self.config = self.model.config
         self.dtype = dtype
-        self.layer_rank_list = self.hybrid_config.layer_rank_list
         
         if not hasattr(self.config, 'head_dim'):
             self.config.head_dim = self.config.hidden_size // self.config.num_attention_heads
@@ -91,17 +90,14 @@ class HybridModelWrapper(nn.Module):
                         MLA_encoder.post_attention_layernorm.load_state_dict(transformer_model.model.layers._modules[f'{layer_idx}'].post_attention_layernorm.state_dict())
                         MLA_encoder.mla.out_proj.load_state_dict(transformer_model.model.layers._modules[f'{layer_idx}'].self_attn.o_proj.state_dict())
 
-                        use_dynamic_rank = not layer_idx in [0, hybrid_config.n_layer-1] or not(hybrid_config.use_fixed_rank_for_first_and_last_block)
-                    
                         q_matrix = transformer_model.model.layers._modules[f'{layer_idx}'].self_attn.q_proj.weight.data                   
-                        q_rank = MLA_encoder.mla.re_init_q(q_matrix, self.config.head_dim, dtype, use_dynamic_rank)
+                        q_rank = MLA_encoder.mla.re_init_q(q_matrix, self.config.head_dim, dtype)
 
                         k_matrix = transformer_model.model.layers._modules[f'{layer_idx}'].self_attn.k_proj.weight.data
                         v_matrix = transformer_model.model.layers._modules[f'{layer_idx}'].self_attn.v_proj.weight.data
-                        kv_rank = MLA_encoder.mla.re_init_kv(k_matrix, v_matrix, self.config.num_key_value_heads, self.config.head_dim, dtype, use_dynamic_rank)
+                        kv_rank = MLA_encoder.mla.re_init_kv(k_matrix, v_matrix, self.config.num_key_value_heads, self.config.head_dim, dtype)
                     
-                        print(f"dynamic_rank: {use_dynamic_rank & (hybrid_config.q_energy_ratio is not None)}; Layernorm: {hybrid_config.use_lora_layer_norm}; layerid: {layer_idx}; q_rank: {q_rank}; kv_rank: {kv_rank}; total_rank: {q_rank+kv_rank}")
-                        self.layer_rank_list[str(layer_idx)] = {"q_rank": q_rank, "kv_rank": kv_rank}
+                        print(f"Layernorm: {hybrid_config.use_lora_layer_norm}; layerid: {layer_idx}; q_rank: {q_rank}; kv_rank: {kv_rank}")
 
                         # keep dtype to be the same
                         MLA_encoder.mlp = MLA_encoder.mlp.to(dtype)
@@ -142,8 +138,6 @@ class HybridModelWrapper(nn.Module):
                         mamba_encoder.post_attention_layernorm = mamba_encoder.post_attention_layernorm.to(dtype)
 
                 self.model.model.layers[layer_idx] = mamba_encoder
-
-        self.hybrid_config.layer_rank_list = self.layer_rank_list
         
         if checkpoint_path is not None:
             if load_from_hub:
@@ -157,7 +151,6 @@ class HybridModelWrapper(nn.Module):
                 else:
                     # support save from safetensors                    
                     self.model.load_state_dict(load_safetensors_to_dict(checkpoint_path), strict=False)
-        
         self.model = self.model.to(dtype).cuda()
 
 

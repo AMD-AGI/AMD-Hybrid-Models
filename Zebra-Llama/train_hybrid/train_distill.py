@@ -227,15 +227,12 @@ def main():
             attention_dropout=config.attention_dropout,
             num_attention_heads=config.num_attention_heads,
             num_key_value_heads=config.num_key_value_heads if not training_args.use_full_kv_head else config.num_attention_heads,
-            q_energy_ratio=training_args.q_energy_ratio,
-            kv_energy_ratio=training_args.kv_energy_ratio,
             max_position_embeddings=config.max_position_embeddings,
             rope_theta=config.rope_theta,
             q_lora_rank=training_args.q_lora_rank,
             qk_rope_head_dim=training_args.qk_rope_head_dim,
             kv_lora_rank=training_args.kv_lora_rank,
             use_lora_layer_norm=training_args.use_lora_layer_norm,
-            use_fixed_rank_for_first_and_last_block=training_args.use_fixed_rank_for_first_and_last_block,
             use_full_kv_head=training_args.use_full_kv_head,
             v_head_dim=training_args.v_head_dim,
             qk_nope_head_dim=training_args.qk_nope_head_dim,
@@ -330,16 +327,16 @@ def main():
     ##########
     # Evaluate
     ##########
-    # if training_args.do_eval:
-    #     logger.info("*** Evaluate ***")
-    #     metrics = trainer.evaluate()
-    #     metrics["eval_samples"] = len(eval_dataset)
-    #     trainer.log_metrics("eval", metrics)
-    #     trainer.save_metrics("eval", metrics)
+    if training_args.do_eval:
+        logger.info("*** Evaluate ***")
+        metrics = trainer.evaluate()
+        metrics["eval_samples"] = len(eval_dataset)
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
 
-    # if training_args.push_to_hub is True:
-    #     logger.info("Pushing to hub...")
-    #     trainer.push_to_hub(**kwargs)
+    if training_args.push_to_hub is True:
+        logger.info("Pushing to hub...")
+        trainer.push_to_hub(**kwargs)
 
     logger.info("*** Training complete ***")
 

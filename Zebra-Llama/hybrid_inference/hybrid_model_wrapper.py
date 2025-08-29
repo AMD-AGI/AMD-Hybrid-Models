@@ -225,10 +225,10 @@ class HybridModelWrapper(nn.Module, GenerationMixin):
     @staticmethod
     def from_pretrained_local(pretrained_model_name, torch_dtype=torch.bfloat16, attn_implementation="flash_attention_2", absorb=False):
         config_data = load_config_hf(pretrained_model_name)
-        transformer_model = CustomLlamaForCausalLM(LlamaConfig(**config_data), hybrid_config, data_dtype=torch_dtype)
         with open(f'{pretrained_model_name}/{HYBRID_CONFIG_NAME}', 'r') as json_file:
             config_dict = json.load(json_file)
         hybrid_config = HybridConfig(**config_dict)
+        transformer_model = CustomLlamaForCausalLM(LlamaConfig(**config_data), hybrid_config, data_dtype=torch_dtype)
         return HybridModelWrapper(pretrained_model_name, transformer_model, hybrid_config, hybrid_config.mla_layers, torch_dtype, absorb=absorb) 
 
     @staticmethod

@@ -1,5 +1,5 @@
 # Model arguments
-model_name_or_path: /path/to/SFT/model
+model_name_or_path: checkpoints/Zebra-1B8B-4MLA12M2
 torch_dtype: bfloat16
 
 # Data training arguments
@@ -31,7 +31,7 @@ max_length: 1024
 max_prompt_length: 512
 num_train_epochs: 1
 optim: adamw_torch
-output_dir: /path/to/DPO/model
+output_dir: checkpoints/Zebra-1B8B-4MLA12M2-dpo
 per_device_train_batch_size: 4
 per_device_eval_batch_size: 8
 push_to_hub: false

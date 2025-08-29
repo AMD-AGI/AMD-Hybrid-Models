@@ -50,10 +50,6 @@ class SFTDistillConfig(SFTConfig):
         default=True,
         metadata={"help": "use_lora_layer_norm"},
     )
-    use_fixed_rank_for_first_and_last_block: bool = field(
-        default=True,
-        metadata={"help": "use_fixed_rank_for_first_and_last_block"},
-    )
     v_head_dim: int = field(
         default=128,
         metadata={"help": "Dimension of v head."},
@@ -62,17 +58,9 @@ class SFTDistillConfig(SFTConfig):
         default=64,
         metadata={"help": "Dimension of qk nope."},
     )
-    q_energy_ratio: float = field(
-        default=None,
-        metadata={"help": "q_energy_ratio."},
-    )
     use_full_kv_head: bool = field(
         default=False,
         metadata={"help": "whether to use the maximum kv head for GQA/MQA"},
-    )
-    kv_energy_ratio: float = field(
-        default=None,
-        metadata={"help": "kv_energy_ratio."},
     )
     layer_rank_list: dict = field(
         default=None,

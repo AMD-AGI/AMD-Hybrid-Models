@@ -8,7 +8,7 @@ def main():
     """
     # 1. Configuration 
     # Define model and tokenizer path, and generation parameters for easy modification.
-    checkpoint_path = "amd/zebra_4MLA12M2_8bt_SFT_8k_combined"
+    checkpoint_path = "amd/Zebra-Llama-1B-4MLA-12Mamba-SFT"
     max_new_tokens = 512
     temperature = 0.7
     
@@ -24,7 +24,7 @@ def main():
         model.eval()
 
         # 3. Prepare Input
-        prompt = [{"role": "user", "content": "Janet\u2019s ducks lay 16 eggs per day. She eats three for breakfast every morning and bakes muffins for her friends every day with four. She sells the remainder at the farmers' market daily for $2 per fresh duck egg. How much in dollars does she make every day at the farmers' market? Lets think step by step"}]
+        prompt = [{"role": "user", "content": "What are the benefits of hybrid LLM models"}]
         input_ids = tokenizer.apply_chat_template(
             prompt,
             add_generation_prompt=True,

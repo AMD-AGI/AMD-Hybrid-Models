@@ -405,10 +405,6 @@ class DeepseekV3Attention(nn.Module):
                 "when creating this class."
             )
 
-        if str(layer_idx) in config.layer_rank_list:
-            config.kv_lora_rank = config.layer_rank_list[str(layer_idx)]["kv_rank"]
-            config.q_lora_rank =  config.layer_rank_list[str(layer_idx)]["q_rank"]
-
         self.attention_dropout = config.attention_dropout
         self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
@@ -425,8 +421,6 @@ class DeepseekV3Attention(nn.Module):
         self.q_head_dim = config.qk_nope_head_dim + config.qk_rope_head_dim
         self.use_lora_layer_norm = config.use_lora_layer_norm
         self.attention_bias = config.attention_bias
-        self.q_energy_ratio = config.q_energy_ratio
-        self.kv_energy_ratio = config.kv_energy_ratio
         self.is_causal = True
 
         if self.q_lora_rank is None:
@@ -526,7 +520,7 @@ class DeepseekV3Attention(nn.Module):
             .contiguous()
         )
     
-    def re_init_q(self, q_matrix, head_dim_init, dtype, use_dynamic_rank):
+    def re_init_q(self, q_matrix, head_dim_init, dtype):
         '''
         Initialize the query matrix of the MLA layers from existing parameters
         '''
@@ -534,19 +528,7 @@ class DeepseekV3Attention(nn.Module):
         # Step 1: Perform SVD to the query weight matrix
         Uq, Sq, Vq =torch.linalg.svd(q_matrix.float())
         
-        # Step 2: If we want to calulate dynamic rank, update the query rank and update the layers to match the size 
-        if self.q_energy_ratio is not None and use_dynamic_rank:
-            self.q_lora_rank = compute_dyna_rank(sigma=Sq, energy_ratio=self.q_energy_ratio, divisor=self.qkv_rank_divisor)
-            self.q_a_proj = nn.Linear(
-                self.hidden_size, self.q_lora_rank , bias=self.attention_bias
-            )
-            if self.use_lora_layer_norm:
-                self.q_a_layernorm = DeepseekV3RMSNorm(self.q_lora_rank)
-            self.q_b_proj = nn.Linear(
-                self.q_lora_rank , self.num_heads * self.q_head_dim, bias=False
-            )
-        
-        # Step 3: Initialize the weights
+        # Step 2: Initialize the weights
         wgt_A = (torch.diag(Sq[:self.q_lora_rank]) @ Vq[:self.q_lora_rank, :]).to(dtype)
         wgt_B = Uq[:, :self.q_lora_rank].to(dtype)
         self.q_a_proj.weight.data.copy_(wgt_A)
@@ -559,7 +541,7 @@ class DeepseekV3Attention(nn.Module):
         return self.q_lora_rank
 
 
-    def re_init_kv(self, k_matrix, v_matrix, num_kv_heads_init, head_dim_init, dtype, use_dynamic_rank):
+    def re_init_kv(self, k_matrix, v_matrix, num_kv_heads_init, head_dim_init, dtype):
         '''
         Initialize the key and value matrices of the MLA layers from existing parameters
         '''
@@ -581,25 +563,8 @@ class DeepseekV3Attention(nn.Module):
 
         # Step 3: perform joint SVD to get the initialization
         Ukv, Skv, Vkv =torch.linalg.svd(kv_matrix.float())
-
-        # Step 4: If we want to calulate dynamic rank, update the kv rank and update the layers to match the size 
-        if self.kv_energy_ratio is not None and use_dynamic_rank:
-            self.kv_lora_rank = compute_dyna_rank(sigma=Skv, energy_ratio=self.kv_energy_ratio, divisor=self.qkv_rank_divisor)
-            self.kv_a_proj_with_mqa = nn.Linear(
-                self.hidden_size,
-                self.kv_lora_rank + self.qk_rope_head_dim,
-                bias=self.attention_bias,
-            )
-            if self.config.use_lora_layer_norm:
-                self.kv_a_layernorm = DeepseekV3RMSNorm(self.kv_lora_rank)
-            self.kv_b_proj = nn.Linear(
-                self.kv_lora_rank,
-                self.num_kv_heads
-                * (self.q_head_dim - self.qk_rope_head_dim + self.v_head_dim),
-                bias=False,
-            )
         
-        # Step 5: Initialize the weight matrices
+        # Step 4: Initialize the weight matrices
         kv_matrix_down = torch.diag(Skv[:self.kv_lora_rank]) @ Vkv[:self.kv_lora_rank, :]
         kv_matrix_down = torch.cat((kv_matrix_down, k_matrix_avg[-self.qk_rope_head_dim:, :]), dim=0)
         self.kv_a_proj_with_mqa.weight.data.copy_(kv_matrix_down.to(dtype))

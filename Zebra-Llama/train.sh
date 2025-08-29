@@ -4,13 +4,14 @@
 launch_training() {
     local fsdp_config=$1
     local model_config=$2
+    local script=$3
     
     echo "Starting training with FSDP config: $fsdp_config and Model config: $model_config"
     
     # Run the training script
     ACCELERATE_LOG_LEVEL=info accelerate launch \
         --config_file "$fsdp_config" \
-        train_hybrid/train_distill.py \
+        "$script" \
         "$model_config"
     
     # Check if the training command was successful
@@ -79,12 +80,21 @@ with open(sys.argv[1], 'r') as f:
 launch_training \
     configs/fsdp_M2_ILD.yaml \
     configs/llama3.2_1B/zebra_M2_ILD.yaml
+    train_hybrid/train_distill.py
 
 # Uncomment the following lines to launch other training jobs
 # launch_training \
 #     configs/fsdp_MLA_ILD.yaml \
 #     configs/llama3.2_1B/zebra_MLA_ILD.yaml
+#     train_hybrid/train_distill.py
 
 # launch_training \
 #     configs/fsdp.yaml \
 #     configs/llama3.2_1B/zebra_4MLA12M2_8bt_SFT.yaml
+#     train_hybrid/train_distill.py
+
+# launch_training \
+#     configs/fsdp.yaml \
+#     configs/dpo.yaml \
+#     train_hybrid/train_dpo.py
+

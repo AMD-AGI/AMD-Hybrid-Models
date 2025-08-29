@@ -23,14 +23,10 @@ class HybridConfig:
     kv_lora_rank: int = 128
     q_lora_rank: int = 1536
     use_lora_layer_norm: bool = False
-    use_fixed_rank_for_first_and_last_block: bool = False
     use_full_kv_head: bool = False
-    layer_rank_list: dict = field(default_factory=dict)
     qk_rope_head_dim: int = 64
     v_head_dim: int = 128
     qk_nope_head_dim: int = 128
-    q_energy_ratio: float = None
-    kv_energy_ratio: float = None
     qkv_rank_divisor: int = 8
     max_position_embeddings: int = 4096
     rope_theta: float = 10000.0
@@ -46,8 +42,6 @@ class HybridConfig:
     d_xb: int = 2560
 
     def __post_init__(self):
-        assert self.q_energy_ratio is None or 1.0 >= self.q_energy_ratio > 0.0, "q_energy_ratio must be (0, 1]"
-        assert self.kv_energy_ratio is None or 1.0 >= self.kv_energy_ratio > 0.0, "q_energy_ratio must be (0, 1]"
         assert self.qkv_rank_divisor % 8 == 0, "qkv_rank_divisor must be divisible by 8"
         assert self.kv_lora_rank % self.qkv_rank_divisor == 0, "kv_lora_rank must be divisible by qkv_rank_divisor"
         assert self.q_lora_rank % self.qkv_rank_divisor == 0, "q_lora_rank must be divisible by qkv_rank_divisor"
