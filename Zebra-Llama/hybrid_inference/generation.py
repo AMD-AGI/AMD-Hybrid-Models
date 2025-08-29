@@ -128,7 +128,6 @@ def decode(
     temperature=1.0,
     repetition_penalty=1.0,
     eos_token_id=None,
-    teacher_outputs=None,
     vocab_size=None,
     cg=False,
     enable_timing=False,
@@ -156,7 +155,6 @@ def decode(
         streamer.put(input_ids.cpu())
         
     batch_size, seqlen_og = input_ids.shape
-    teacher_output_len = teacher_outputs.shape[1] if teacher_outputs is not None else 0
 
     if cg:
         param_example = next(iter(model.parameters()))
@@ -206,10 +204,7 @@ def decode(
         return logits[..., :vocab_size] if vocab_size is not None else logits
 
     def sample_tokens(logits, inference_params):
-        if teacher_outputs is None or teacher_output_len <= inference_params.seqlen_offset:
-            token = sample(logits, top_k=top_k, top_p=top_p, min_p=min_p, temperature=temperature)
-        else:
-            token = teacher_outputs[:, inference_params.seqlen_offset]
+        token = sample(logits, top_k=top_k, top_p=top_p, min_p=min_p, temperature=temperature)
         return token.unsqueeze(1)
 
     def should_stop(current_token, inference_params):
@@ -260,7 +255,15 @@ def decode(
         end.record()
         torch.cuda.synchronize()
         time = start.elapsed_time(end)
-        print(f"Prompt processing + decoding time: {time:.0f}ms")
+        if not random_context:
+            print(f"Prompt processing + decoding time: {time:.0f}ms")
+        else:
+            print(f"Decoding time: {time:.0f}ms")
+        input_len = input_ids.shape[-1]
+        output_len = sequences.shape[-1]
+        bs = input_ids.shape[0]
+        total_tokens = (output_len - input_len) * bs  # Subtract input tokens
+        print(f"Total tokens generated: {(total_tokens):.2f}")
 
     output_cls = GreedySearchDecoderOnlyOutput if top_k == 1 else SampleDecoderOnlyOutput
     return output_cls(sequences=sequences, scores=tuple(scores))
@@ -282,11 +285,17 @@ class GenerationMixin:
         output_scores=False,
         **kwargs,
     ):  
-        def decode_func():
-            return decode(
-                input_ids, self, max_length, top_k=top_k, top_p=top_p, min_p = min_p, temperature=temperature, output_scores=output_scores, **kwargs
-            )
-        output = decode_func()
+        output = decode(
+            input_ids,
+            self,
+            max_length,
+            top_k=top_k,
+            top_p=top_p,
+            min_p=min_p,
+            temperature=temperature,
+            output_scores=output_scores,
+            **kwargs
+        )
         if not output_scores:
             output.scores = None
         return output if return_dict_in_generate else output.sequences

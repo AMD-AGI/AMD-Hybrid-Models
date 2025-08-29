@@ -8,7 +8,7 @@ def main():
     """
     # 1. Configuration 
     # Define model and tokenizer path, and generation parameters for easy modification.
-    checkpoint_path = "amd/Zebra-1B8B-4MLA12M2-2k-rope"
+    checkpoint_path = "amd/zebra_4MLA12M2_8bt_SFT_8k_combined"
     max_new_tokens = 512
     temperature = 0.7
     
