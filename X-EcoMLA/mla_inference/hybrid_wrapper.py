@@ -211,7 +211,7 @@ class MLATransformerHybridModelWrapper(nn.Module, GenerationMixin):
                 static_inputs = {'input_ids': torch.randint(0, 100, (inference_params.max_batch_size, 1), device="cuda", dtype=torch.long)}
             else:
                 static_inputs = {
-                    'x': torch.randn((inference_params.max_batch_size, 1, self.config.num_attention_heads, self.MLA_config.deepseek_cfg.kv_lora_rank), device="cuda", dtype=self.dtype),
+                    'x': torch.randn((inference_params.max_batch_size, 1, self.config.num_attention_heads, self.MLA_config.deepseek_cfg.layer_rank_list[str(idx-1)]["kv_rank"]), device="cuda", dtype=self.dtype),
                     'residual': torch.randn((inference_params.max_batch_size, 1, self.config.hidden_size), device="cuda", dtype=self.dtype),
                 }
             
