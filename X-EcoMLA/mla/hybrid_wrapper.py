@@ -14,7 +14,7 @@ from transformers.utils.hub import cached_file
 
 from mla.hybrid_model import MLADecoderLayer
 from mla.hybrid_mla_config import MLAConfig, DeepseekV3Config
-
+from typing import List, Optional, Tuple, Union
 from util import load_safetensors_to_dict
 
 MLA_CONFIG_NAME = "MLA_config.json"
@@ -25,15 +25,21 @@ def load_config_hf(model_name):
     return json.load(open(resolved_archive_file))
 
 
-def load_state_dict_hf(model_name, device=None, dtype=None):
-    # If not fp32, then we don't want to load directly to the GPU
-    mapped_device = "cpu" if dtype not in [torch.float32, None] else device
+def load_state_dict_hf(model_name: str, device: Optional[torch.device] = None, dtype: Optional[torch.dtype] = None) -> dict:
+    """Loads a state dict from a local path or the Hugging Face Hub, supporting safetensors."""
     resolved_archive_file = cached_file(model_name, WEIGHTS_NAME, _raise_exceptions_for_missing_entries=False)
-    return torch.load(resolved_archive_file, map_location=mapped_device)
-    # Convert dtype before moving to GPU to save memory
-    if dtype is not None:
-        state_dict = {k: v.to(dtype=dtype) for k, v in state_dict.items()}
-    state_dict = {k: v.to(device=device) for k, v in state_dict.items()}
+    
+    # Try to load from safetensors if .bin file is not found
+    if not resolved_archive_file:
+        resolved_archive_file = cached_file(model_name, 'model.safetensors', _raise_exceptions_for_missing_entries=False)
+        if resolved_archive_file:
+            # Assumes load_safetensors_to_dict can handle both a file path and a directory
+            state_dict = load_safetensors_to_dict(os.path.dirname(resolved_archive_file))
+        else:
+            raise FileNotFoundError(f"Neither {WEIGHTS_NAME} nor 'model.safetensors' found in {model_name}")
+    else:
+        state_dict = torch.load(resolved_archive_file, map_location="cpu", weights_only=False)
+        
     return state_dict
 
 
@@ -88,16 +94,15 @@ class MLATransformerHybridModelWrapper(nn.Module):
         if checkpoint_path is not None:
             if load_from_hub:
                 # load from a huggingface hub
-                self.model.load_state_dict(load_state_dict_hf(checkpoint_path, device=torch.device("cpu"), dtype=dtype))
+                self.model.load_state_dict(load_state_dict_hf(checkpoint_path, device=torch.device("cpu"), dtype=dtype))                
             else:
                 # load from a local directory
                 if os.path.exists(f"{checkpoint_path}/pytorch_model.bin"):
                     # support save from bin file
                     self.model.load_state_dict(torch.load(f"{checkpoint_path}/pytorch_model.bin", map_location=torch.device("cpu")))
                 else:
-                    # support save from safetensors
-                    self.model.load_state_dict(load_safetensors_to_dict(checkpoint_path))
-        
+                    # support save from safetensors                    
+                    self.model.load_state_dict(load_safetensors_to_dict(checkpoint_path), strict=False)
         self.model = self.model.to(dtype).cuda()
 
 
