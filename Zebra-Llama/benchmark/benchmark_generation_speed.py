@@ -11,7 +11,6 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 import sys
 import numpy as np
 
-sys.path.append('/home/mingyyan/AMD-Hybrid-Models/Zebra-Llama')
 from hybrid.hybrid_config import HybridConfig
 from hybrid_inference.hybrid_model_wrapper import HybridModelWrapper
 
