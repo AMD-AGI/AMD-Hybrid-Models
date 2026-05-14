@@ -1,31 +1,20 @@
-# Code owners for AMD-Hybrid-Models
-#
-# These users are automatically requested for review on every pull request
-# that touches matching paths. See:
-# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
-#
-# Order matters: the LAST matching pattern wins for a given file.
+# Team slugs: https://github.com/orgs/AMD-AGI/teams
+# Syntax:     https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+# Last matching rule wins. Prefer GitHub Teams over individuals.
 
-# ---------------------------------------------------------------------------
-# Default owners for everything in the repo
-# ---------------------------------------------------------------------------
-*                       @mrgzadeh-amd @LiGuihong @Mingyuyang-1 @vikappia
+# Default — every file requires project-team approval
+*                            @AMD-AGI/efficient-genai
 
-# ---------------------------------------------------------------------------
-# Project-specific owners
-# ---------------------------------------------------------------------------
+# Per-subproject owners (real top-level folders in this repo)
+/X-EcoMLA/                   @AMD-AGI/efficient-genai
+/Zebra-Llama/                @AMD-AGI/efficient-genai
 
-# X-EcoMLA: upcycling attention into MLA for KV-cache compression
-/X-EcoMLA/              @mrgzadeh-amd @LiGuihong @Mingyuyang-1 @vikappia
-
-# Zebra-Llama: hybrid MLA + Mamba2 models
-/Zebra-Llama/           @mrgzadeh-amd @Mingyuyang-1 @LiGuihong @vikappia
-
-# ---------------------------------------------------------------------------
-# Repo governance / security-sensitive files (require an owner review)
-# ---------------------------------------------------------------------------
-/.github/               @mrgzadeh-amd @vikappia
-/LICENSE                @mrgzadeh-amd @vikappia
-/SECURITY.md            @mrgzadeh-amd @vikappia
-/CONTRIBUTING.md        @mrgzadeh-amd @vikappia
-/.github/CODEOWNERS     @mrgzadeh-amd @vikappia
+# Governance paths — TPM + named admins must approve
+# (policy §2.1.4: CODEOWNERS, CI, README, CONTRIBUTING, SECURITY → @AMD-AGI/brain-tpm)
+/.github/                    @AMD-AGI/brain-tpm @mrgzadeh-amd @vikappia
+/.github/CODEOWNERS          @AMD-AGI/brain-tpm @mrgzadeh-amd @vikappia
+/.github/workflows/          @AMD-AGI/brain-tpm @mrgzadeh-amd @vikappia
+/LICENSE                     @AMD-AGI/brain-tpm @mrgzadeh-amd @vikappia
+/README.md                   @AMD-AGI/brain-tpm @mrgzadeh-amd @vikappia
+/CONTRIBUTING.md             @AMD-AGI/brain-tpm @mrgzadeh-amd @vikappia
+/SECURITY.md                 @AMD-AGI/brain-tpm @mrgzadeh-amd @vikappia
