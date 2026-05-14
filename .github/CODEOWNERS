@@ -1,0 +1,31 @@
+# Code owners for AMD-Hybrid-Models
+#
+# These users are automatically requested for review on every pull request
+# that touches matching paths. See:
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+#
+# Order matters: the LAST matching pattern wins for a given file.
+
+# ---------------------------------------------------------------------------
+# Default owners for everything in the repo
+# ---------------------------------------------------------------------------
+*                       @mrgzadeh-amd @LiGuihong @Mingyuyang-1 @vikappia
+
+# ---------------------------------------------------------------------------
+# Project-specific owners
+# ---------------------------------------------------------------------------
+
+# X-EcoMLA: upcycling attention into MLA for KV-cache compression
+/X-EcoMLA/              @mrgzadeh-amd @LiGuihong @Mingyuyang-1 @vikappia
+
+# Zebra-Llama: hybrid MLA + Mamba2 models
+/Zebra-Llama/           @mrgzadeh-amd @Mingyuyang-1 @LiGuihong @vikappia
+
+# ---------------------------------------------------------------------------
+# Repo governance / security-sensitive files (require an owner review)
+# ---------------------------------------------------------------------------
+/.github/               @mrgzadeh-amd @vikappia
+/LICENSE                @mrgzadeh-amd @vikappia
+/SECURITY.md            @mrgzadeh-amd @vikappia
+/CONTRIBUTING.md        @mrgzadeh-amd @vikappia
+/.github/CODEOWNERS     @mrgzadeh-amd @vikappia
