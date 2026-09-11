@@ -1,0 +1,3 @@
+[submodule "HyLo/3rdparty/flash-linear-attention"]
+	path = HyLo/3rdparty/flash-linear-attention
+	url = https://github.com/fla-org/flash-linear-attention.git

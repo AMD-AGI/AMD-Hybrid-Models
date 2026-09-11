@@ -1,0 +1,83 @@
+# Stage 2 SFT: Qwen3-1.7B, 25% MLA (7) + 75% GDN (21), Qwen3-8B teacher, 64k context.
+# Uses fused_kl_hidden (FLA FusedKLDivLoss from hidden states) + fused CE (Liger).
+# Launch with: accelerate launch --config_file configs/fsdp_GDN_checkpoint.yaml train_hybrid/train_distill.py configs/qwen3_1.7B/zebra_7MLA21GDN_8bT_SFT_64k_combined.yaml
+
+# Model arguments
+model_name_or_path: Qwen/Qwen3-1.7B
+teacher_model_name_or_path: Qwen/Qwen3-8B
+linear_type: gdn
+linear_ILD_path: checkpoints/Zebra-Qwen3-1.7B-ILD-GDN
+mla_ILD_path: checkpoints/Zebra-Qwen3-1.7B-ILD-MLA
+with_distill: false
+mla_layers: [1, 5, 9, 13, 17, 21, 25]
+init_with_svd: false
+init_with_kqvo: false
+decontaminate: true
+torch_dtype: bfloat16
+use_flash_attention_2: true
+fused_linear_cross_entropy: true
+fused_linear_cross_entropy_compile: false
+
+# Data training arguments
+data_ratio: 1.0
+chat_template: "{% for message in messages %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}"
+dataset_mixer:
+  JunxiongWang/sftdatasetv3: 1.0
+  # The published mixture also drew on four AMD-preprocessed datasets that are not part
+  # of this release. Each is a reformatted (chat-templated, length-filtered) variant of a
+  # public upstream; add the upstreams below to reproduce the mixture:
+  #   nvidia/OpenMathInstruct-2       (cc-by-4.0)    2M-sample subset
+  #   open-thoughts/OpenThoughts-114k (apache-2.0)   math split
+  #   open-r1/OpenR1-Math-220k        (apache-2.0)   full set
+  #   nvidia/ChatQA2-Long-SFT-data    (cc-by-nc-2.0) long_sft_QA split; supplies the
+  #                                                  long-context supervision
+  # See "Training data" in README.md for the conversion the AMD variants applied.
+dataset_splits:
+- train
+- test
+preprocessing_num_workers: 128
+
+# SFT trainer config
+bf16: true
+do_eval: true
+ILD: false
+eval_strategy: epoch
+factor: 2.0
+gradient_accumulation_steps: 1
+gradient_checkpointing: false
+gradient_checkpointing_kwargs:
+  use_reentrant: False
+learning_rate: 6.0e-05
+log_level: info
+logging_steps: 10
+logging_strategy: steps
+lr_scheduler_type: cosine
+max_seq_length: 65536
+max_steps: -1
+num_train_epochs: 1
+original_max_position_embeddings: 32768
+output_dir: checkpoints/zebra_qwen3_7MLA21GDN_8bT_SFT_64k_combined
+overwrite_output_dir: true
+per_device_eval_batch_size: 1
+per_device_train_batch_size: 1
+push_to_hub: false
+remove_unused_columns: true
+report_to:
+- wandb
+save_strategy: "steps"
+save_steps: 1000
+save_total_limit: 1
+seed: 42
+warmup_ratio: 0.01
+kl_weight: 1.0
+ce_weight: 0.0
+fused_kl_hidden: true
+
+# MLA configs
+q_lora_rank: 1344
+qk_rope_head_dim: 64
+kv_lora_rank: 256
+v_head_dim: 128
+qk_nope_head_dim: 64
+use_lora_layer_norm: false
+use_full_kv_head: false

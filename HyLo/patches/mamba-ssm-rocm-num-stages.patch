@@ -1,0 +1,27 @@
+diff --git a/mamba_ssm/utils/determinism.py b/mamba_ssm/utils/determinism.py
+index c6066f8..e7a1940 100644
+--- a/mamba_ssm/utils/determinism.py
++++ b/mamba_ssm/utils/determinism.py
+@@ -62,6 +62,22 @@ def autotune_configs(configs):
+     Uses cached autotuning (TRITON_CACHE_AUTOTUNING=1) if Triton >= 3.4.0,
+     otherwise auto-selects the cheapest config by block size * stages.
+     """
++    # On ROCm the AMD software pipeliner fails to lower some of these configs:
++    # _chunk_state_bwd_db_kernel aborts the backward pass with
++    # "RuntimeError: PassManager::run failed" in make_ttgir (seen on gfx950 with
++    # Triton 3.4.0). num_stages=1 disables pipelining and leaves the block sizes
++    # alone. Set MAMBA_ROCM_NUM_STAGES=0 to keep the upstream configs.
++    if configs and torch.version.hip and os.environ.get("MAMBA_ROCM_NUM_STAGES") != "0":
++        import triton
++        configs = [
++            triton.Config(
++                c.kwargs,
++                num_warps=c.num_warps,
++                num_stages=1,
++                pre_hook=c.pre_hook,
++            )
++            for c in configs
++        ]
+     if not configs or not use_deterministic_mode():
+         return configs
+     if TRITON_HAS_CACHE_RESULTS and os.environ.get("TRITON_CACHE_AUTOTUNING") == "1":

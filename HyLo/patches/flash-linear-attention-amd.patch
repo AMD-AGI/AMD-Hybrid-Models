@@ -1,0 +1,28 @@
+diff --git a/fla/modules/conv/triton/kernels.py b/fla/modules/conv/triton/kernels.py
+index 0368de14..600e264d 100644
+--- a/fla/modules/conv/triton/kernels.py
++++ b/fla/modules/conv/triton/kernels.py
+@@ -137,7 +137,7 @@ def causal_conv1d_fwd_kernel(
+     configs=[
+         triton.Config({'BD': BD}, num_warps=num_warps)
+         for BD in [16, 32, 64, 128]
+-        for num_warps in [4, 8, 16, 32]
++        for num_warps in NUM_WARPS_AUTOTUNE
+     ],
+     key=['D', 'W', 'NB'],
+     **autotune_cache_kwargs,
+diff --git a/fla/ops/gated_delta_rule/wy_fast.py b/fla/ops/gated_delta_rule/wy_fast.py
+index 9d55b67f..57005f2a 100644
+--- a/fla/ops/gated_delta_rule/wy_fast.py
++++ b/fla/ops/gated_delta_rule/wy_fast.py
+@@ -220,7 +220,9 @@ def prepare_wy_repr_bwd_kernel(
+         p_dk = tl.make_block_ptr(dk + (bos*H + i_h) * K, (T, K), (H*K, 1), (i_t * BT, i_k * BK), (BT, BK), (1, 0))
+         b_k = tl.load(p_k, boundary_check=(0, 1))
+         b_kt = tl.trans(b_k)
+-        b_ktb = b_kt * b_b[None, :]
++        # b_ktb[i,j] = b_kt[i,j] * b_b[j]. Equivalent: b_ktb = trans(b_k * b_b[:, None]) to avoid
++        # AMD Triton encoding mismatch on b_kt * b_b[None, :] (arith.mulf same-encoding requirement).
++        b_ktb = tl.trans(b_k * b_b[:, None])
+ 
+         b_A += tl.dot(b_k, b_kt)
+         b_dkb = tl.dot(b_dA, b_k)
