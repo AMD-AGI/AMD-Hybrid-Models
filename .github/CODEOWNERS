@@ -8,6 +8,7 @@
 # Per-subproject owners (real top-level folders in this repo)
 /X-EcoMLA/                   @AMD-AGI/efficient-genai
 /Zebra-Llama/                @AMD-AGI/efficient-genai
+/HyLo/                       @AMD-AGI/efficient-genai
 
 # Governance paths — TPM + named admins must approve
 # (policy §2.1.4: CODEOWNERS, CI, README, CONTRIBUTING, SECURITY → @AMD-AGI/brain-tpm)

@@ -169,3 +169,15 @@ debug
 flash-attention
 debug-*
 debug*
+
+# Locally cloned third-party dependencies (install.sh fetches these)
+alignment-handbook/
+lm-evaluation-harness/
+mamba-pip/
+causal-conv1d/
+
+# Training outputs
+checkpoints/
+logs/
+results/
+*.out
